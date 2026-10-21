@@ -94,7 +94,9 @@ inline void divider(touchgfx::Container& parent, touchgfx::Line& line,
 inline void fixed1(char* out, size_t n, float v)
 {
     const bool neg = v < 0.0f;
-    long tenths = static_cast<long>((neg ? -v : v) * 10.0f + 0.5f);
+    float mag = neg ? -v : v;
+    mag = mag > 99999.0f ? 99999.0f : mag;   // Keeps the text to 8 characters.
+    long tenths = static_cast<long>(mag * 10.0f + 0.5f);
     std::snprintf(out, n, "%s%ld.%ld", (neg && tenths != 0) ? "-" : "", tenths / 10, tenths % 10);
 }
 
@@ -104,6 +106,9 @@ inline void distance(char* out, size_t n, float metres, bool imperial)
     float v = metres / (imperial ? 1609.344f : 1000.0f);
     if (v < 0.0f) {
         v = 0.0f;
+    }
+    if (v > 9999.0f) {
+        v = 9999.0f;
     }
     if (v < 10.0f) {
         const long hundredths = static_cast<long>(v * 100.0f + 0.5f);

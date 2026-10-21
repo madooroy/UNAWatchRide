@@ -17,10 +17,10 @@ void RideBanner::show(const RideAlertInfo& alert, bool isImperial)
 {
     using Kind = Ride::AlertKind;
     char title[24] = "";
-    char detail[48] = "";
+    char detail[64] = "";
     uint32_t bg = SDK::GUI::Color::TEAL_DARK;
 
-    char a[12], b[12], c[12];
+    char a[16], b[16], c[16];
     switch (alert.kind) {
     case Kind::ClimbStarted:
         std::snprintf(title, sizeof(title), "Climb");

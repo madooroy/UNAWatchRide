@@ -26,7 +26,7 @@ TrackFaceClimb::TrackFaceClimb()
 
 void TrackFaceClimb::setData(const Ride::Data& d, bool isImperial)
 {
-    char s[24];
+    char s[48];
     const char* hUnit = isImperial ? "ft" : "m";
 
     // Live grade.
@@ -51,7 +51,7 @@ void TrackFaceClimb::setData(const Ride::Data& d, bool isImperial)
         mLowUnit.set(isImperial ? "mi" : "km");
 
         // "Avg 6.1%  VAM 820" (VAM appears once there is enough climbing).
-        char avg[8];
+        char avg[16];
         RideUi::fixed1(avg, sizeof(avg), d.climbGradePct);
         if (d.climbVamMph > 0.0f) {
             std::snprintf(s, sizeof(s), "Avg %s%%  VAM %ld", avg,

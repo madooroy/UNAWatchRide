@@ -36,7 +36,7 @@ protected:
     uint8_t mPreset      = 0;
     Ride::RouteState mRouteState = Ride::RouteState::None;
     char    mHrTip[12]    = "";
-    char    mRouteTip[24] = "";
+    char    mRouteTip[40] = "";
 
     void refreshTips();
 

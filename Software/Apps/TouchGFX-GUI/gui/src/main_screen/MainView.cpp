@@ -76,7 +76,7 @@ void MainView::setRoute(Ride::RouteState state, float lengthM, bool isImperial)
 {
     MenuItemConfig& c = mCenterItems[Menu::ID_START];
     if (state == Ride::RouteState::Loaded || state == Ride::RouteState::Following) {
-        char d[12];
+        char d[16];
         RideUi::distance(d, sizeof(d), lengthM, isImperial);
         std::snprintf(mRouteTip, sizeof(mRouteTip), "Route %s %s", d, isImperial ? "mi" : "km");
         c.style     = MenuItemConfig::TIP;

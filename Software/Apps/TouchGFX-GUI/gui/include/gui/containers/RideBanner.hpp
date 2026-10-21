@@ -28,7 +28,7 @@ public:
 private:
     touchgfx::Box    mBox;
     RideUi::Text<24> mTitle;
-    RideUi::Text<40> mDetail;
+    RideUi::Text<64> mDetail;
     static constexpr uint32_t kArmed = 0xFFFFFFFFu;
     uint32_t         mFramesLeft = 0;
 };

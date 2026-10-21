@@ -68,7 +68,7 @@ void MenuSettingsView::setRouteInfo(Ride::RouteState state, float lengthM, bool 
     switch (state) {
     case Ride::RouteState::Loaded:
     case Ride::RouteState::Following: {
-        char d[12];
+        char d[16];
         RideUi::distance(d, sizeof(d), lengthM, isImperial);
         std::snprintf(mRouteTip, sizeof(mRouteTip), "%s %s", d, isImperial ? "mi" : "km");
     } break;

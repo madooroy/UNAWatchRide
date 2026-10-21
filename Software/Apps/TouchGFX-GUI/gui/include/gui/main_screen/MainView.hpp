@@ -33,7 +33,7 @@ protected:
     bool mGpsFix = false;
     SDK::GUI::SensorStatusRow mSensorRow;
 
-    char mRouteTip[24] = "";
+    char mRouteTip[40] = "";
 
     MenuItemConfig mItems[Menu::ID_COUNT] {};
     MenuItemConfig mCenterItems[Menu::ID_COUNT] {};

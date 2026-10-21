@@ -1,0 +1,30 @@
+name: Unit tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    env:
+      # The SDK commit this app is developed against.
+      UNA_SDK_REF: d71d0dc3bad7d47282fcf5a4c53a3f0f2031afb1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the UNA SDK
+        run: |
+          git init una-sdk
+          git -C una-sdk remote add origin https://github.com/UNAWatch/una-sdk.git
+          git -C una-sdk fetch --depth 1 origin "$UNA_SDK_REF"
+          git -C una-sdk checkout --quiet FETCH_HEAD
+          echo "UNA_SDK=$GITHUB_WORKSPACE/una-sdk" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          cmake -S Tests -B Tests/build
+          cmake --build Tests/build -j
+
+      - name: Test
+        run: ctest --test-dir Tests/build --output-on-failure

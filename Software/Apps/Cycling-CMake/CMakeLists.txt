@@ -3,14 +3,19 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build")
 
 # App configuration
+#
+# This app is derived from UNA's Cycling example but has its own identity, so
+# it installs next to the stock app instead of replacing it. APP_NAME stays
+# "Cycling": it only names the build targets and ELFs (and the simulator
+# Makefile's sources), not anything on the watch.
 set(APP_NAME "Cycling")
-# Launcher name only. APP_NAME stays "Cycling" so the targets, ELFs and the
-# .uapp artifact keep the names the OTA flow and the release zip expect.
-set(APP_USER_NAME "Bike")
-set(APP_FILE_NAME "Cycling")
+set(APP_USER_NAME "Ride")          # Launcher name.
+set(APP_FILE_NAME "Ride")          # Ride.uapp; install it in Apps/Ride/ on the watch.
 set(APP_TYPE "Activity")
-set(DEV_ID "UNA")
-set(APP_ID "A1B7D4E29C8F105A")
+set(DEV_ID "MADOOROY")
+# md5("UnaWatchCycling")[:16], per Docs/sdk-setup.md. Replace it with the ID
+# from apps.unawatch.com if the app is ever published there (Docs/deploy.md).
+set(APP_ID "E504A310DAC4B452")
 set(RESOURCES_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../Resources")
 set(OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../Output")
 set(LIBS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../Libs")

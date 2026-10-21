@@ -23,7 +23,7 @@ public:
 private:
     RideUi::Text<16> mGradeLabel, mGradeValue, mGradeUnit;
     RideUi::Text<16> mMidLabel, mMidValue, mMidUnit;
-    RideUi::Text<24> mLowLabel;
+    RideUi::Text<32> mLowLabel;
     RideUi::Text<12> mLowValue, mLowUnit;
 
     touchgfx::Line             mLine1, mLine2;
