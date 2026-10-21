@@ -1,0 +1,78 @@
+/**
+ ******************************************************************************
+ * @file    TrackInfo.hpp
+ * @date    08-04-2025
+ * @author  Denys Saienko <denys.saienko@droid-technologies.com>
+ * @brief   Represents current track information.
+ ******************************************************************************
+ *
+ ******************************************************************************
+ */
+
+#ifndef TRACK_HPP
+#define TRACK_HPP
+
+#include <cstdint>
+#include <ctime>
+
+namespace Track
+{
+
+/**
+ * @brief Activity tracking state.
+ */
+enum class State {
+    INACTIVE = 0,
+    ACTIVE,
+    PAUSED
+};
+
+/**
+ * @brief Real-time metrics snapshot; updated every second by the Service.
+ *
+ * All distances are in metres, speeds in m/s, pace in s/m, times in seconds.
+ * The GUI converts to display units as needed.
+ *
+ * @note This snapshot exists for the GUI only. The live speed and pace it
+ *       carries are corrected against the position track and smoothed. The
+ *       averages are not: they come from the distance and time totals.
+ */
+struct Data {
+
+    // Pace, s/m
+    float pace        = 0.0f;   ///< Live pace, corrected and smoothed (see GpsSpeedFilter)
+    float lapPace     = 0.0f;
+
+    // Distance, m
+    float distance    = 0.0f;
+    float lapDistance = 0.0f;
+
+    // Time, s
+    std::time_t totalTime = 0;
+    std::time_t lapTime   = 0;
+
+    uint32_t lapNum = 0;
+
+    // Heart rate, bpm
+    float hr           = 0.0f;
+    float hrTrustLevel = 0.0f;
+    uint8_t hrSource   = 0;     // SDK HeartRate::Source: 0 none/unknown, 1 optical, 2 external
+    float avgHR        = 0.0f;
+    float maxHR        = 0.0f;
+    float avgLapHR     = 0.0f;
+    float maxLapHR     = 0.0f;
+
+    // Speed, m/s
+    float speed       = 0.0f;   ///< Live speed, smoothed over the same window as pace
+    float avgSpeed    = 0.0f;
+    float maxSpeed    = 0.0f;
+    float avgLapSpeed = 0.0f;
+    float maxLapSpeed = 0.0f;
+
+    // Elevation, m
+    float elevation    = 0.0f;
+};
+
+} // namespace Track
+
+#endif // TRACK_HPP

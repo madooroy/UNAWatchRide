@@ -1,0 +1,409 @@
+#include <gui/model/Model.hpp>
+#include "SDK/Messages/MessageGuard.hpp"
+#include <gui/model/ModelListener.hpp>
+#include <gui/common/FrontendApplication.hpp>
+
+#include "SDK/Kernel/KernelProviderGUI.hpp"
+#include "SDK/Port/TouchGFX/TouchGFXCommandProcessor.hpp"
+
+#define LOG_MODULE_PRX      "Model"
+#define LOG_MODULE_LEVEL    LOG_LEVEL_INFO
+#include "SDK/UnaLogger/Logger.h"
+
+Model::Model()
+    : modelListener(nullptr)
+    , mKernel(SDK::KernelProviderGUI::GetInstance().getKernel())
+{
+    SDK::TouchGFXCommandProcessor::GetInstance().setAppLifeCycleCallback(this);
+    SDK::TouchGFXCommandProcessor::GetInstance().setCustomMessageHandler(this);
+    memcpy(mHrThresholds, CustomMessage::kHrThresholdsDefault, sizeof(mHrThresholds));
+
+#if defined(SIMULATOR)
+    std::string fsPath = SDK::Simulator::KernelHolder::Get().getFsPath();
+    LOG_INFO("Simulator.\n");
+    LOG_INFO("FS path: [%s].\n", fsPath.c_str());
+    LOG_INFO("Buttons: 1=L1 2=L2 3=R1 4=R2\n\n");
+#endif
+}
+
+// Controls
+
+FrontendApplication& Model::application()
+{
+    return *static_cast<FrontendApplication*>(touchgfx::Application::getInstance());
+}
+
+App::MenuNav::Nav& Model::menu()
+{
+    return mMenu;
+}
+
+void Model::invalidate()
+{
+    mInvalidate = true;
+}
+
+void Model::tick()
+{
+#if defined(SIMULATOR)
+    decIdleTimer();
+#else
+    if (mIsRunning) {
+        decIdleTimer();
+    }
+#endif
+    if (mInvalidate) {
+        mInvalidate = false;
+        application().invalidate();
+    }
+}
+
+void Model::handleKeyEvent(uint8_t key)
+{
+    LOG_DEBUG("key = %c\n", static_cast<char>(key));
+    if (isAnyKeyPressed(key)) {
+        resetIdleTimer();
+    }
+}
+
+void Model::resetIdleTimer()
+{
+    mIdleTimer = App::Config::kScreenTimeoutSteps;
+}
+
+void Model::exitApp()
+{
+    LOG_INFO("Manually exiting the application\n");
+
+    SDK::TouchGFXCommandProcessor::GetInstance().setAppLifeCycleCallback(nullptr);
+    SDK::TouchGFXCommandProcessor::GetInstance().setCustomMessageHandler(nullptr);
+
+    mKernel.sys.exit();
+    // On simulator sys.exit() only sets a flag -- the current tick completes normally.
+}
+
+
+// Date/Time
+
+void Model::getDate(uint8_t& month, uint8_t& day, uint8_t& weekday)
+{
+    month   = static_cast<uint8_t>(mTime.tm_mon);
+    day     = static_cast<uint8_t>(mTime.tm_mday);
+    weekday = static_cast<uint8_t>(mTime.tm_wday);
+}
+
+void Model::getTime(uint8_t& h, uint8_t& m, uint8_t& s)
+{
+    h = static_cast<uint8_t>(mTime.tm_hour);
+    m = static_cast<uint8_t>(mTime.tm_min);
+    s = static_cast<uint8_t>(mTime.tm_sec);
+}
+
+
+// Power
+
+uint8_t Model::getBatteryLevel() const
+{
+    return mBatteryLevel;
+}
+
+
+// Settings
+
+bool Model::isUnitsImperial() const
+{
+    return mUnitsImperial;
+}
+
+bool Model::is12HourFormat() const
+{
+    return mTimeFormat12h;
+}
+
+const uint8_t* Model::getHrThresholds() const
+{
+    return mHrThresholds;
+}
+
+uint8_t Model::getHrThresholdsCount() const
+{
+    return mHrThresholdsCount;
+}
+
+const Settings& Model::getSettings() const
+{
+    return mSettings;
+}
+
+void Model::saveSettings(const Settings& sett)
+{
+    mSettings = sett;
+    SDK::send_msg<CustomMessage::SettingsSave>(mKernel, mSettings);
+}
+
+
+// GPS
+
+bool Model::hasGpsFix() const
+{
+    return mGpsFix;
+}
+
+uint8_t Model::getAccessoryState() const
+{
+    return mAccessoryState;
+}
+
+
+// Track
+
+void Model::trackStart()
+{
+    SDK::send_msg<CustomMessage::TrackStart>(mKernel);
+}
+
+bool Model::isTrackActive() const
+{
+    return mTrackState != Track::State::INACTIVE;
+}
+
+void Model::trackPause()
+{
+    SDK::send_msg<CustomMessage::TrackPause>(mKernel);
+}
+
+void Model::trackResume()
+{
+    SDK::send_msg<CustomMessage::TrackResume>(mKernel);
+}
+
+bool Model::isTrackPaused() const
+{
+    return mTrackState == Track::State::PAUSED;
+}
+
+std::time_t Model::getPausedSeconds() const
+{
+    // mPauseStartSec == 0 means the pause began before the clock was available
+    // and has not been adopted yet; report nothing rather than an epoch.
+    if (mTrackState != Track::State::PAUSED
+        || mPauseStartSec == 0
+        || mNowSec < mPauseStartSec) {
+        return 0;
+    }
+    return mNowSec - mPauseStartSec;
+}
+
+const Track::Data& Model::getTrackData() const
+{
+    return mTrackData;
+}
+
+void Model::saveLap()
+{
+    SDK::send_msg<CustomMessage::ManualLap>(mKernel);
+}
+
+void Model::setHoldConfirmMode(HoldConfirmMode mode)
+{
+    mHoldConfirmMode = mode;
+}
+
+Model::HoldConfirmMode Model::getHoldConfirmMode() const
+{
+    return mHoldConfirmMode;
+}
+
+void Model::saveTrack()
+{
+    SDK::send_msg<CustomMessage::TrackStop>(mKernel, false);
+}
+
+void Model::discardTrack()
+{
+    SDK::send_msg<CustomMessage::TrackStop>(mKernel, true);
+}
+
+bool Model::isTrackSummaryAvailable() const
+{
+    return mActivitySummary != nullptr && mActivitySummary->time != 0;
+}
+
+const ActivitySummary& Model::getTrackSummary() const
+{
+    return *mActivitySummary;
+}
+
+
+// Private
+
+void Model::decIdleTimer()
+{
+    if (mIdleTimer > 0) {
+        if (--mIdleTimer == 0) {
+            modelListener->onIdleTimeout();
+        }
+    }
+}
+
+bool Model::isAnyKeyPressed(uint8_t key) const
+{
+    return key == SDK::GUI::Button::L1 ||
+           key == SDK::GUI::Button::L2 ||
+           key == SDK::GUI::Button::R1 ||
+           key == SDK::GUI::Button::R2;
+}
+
+
+// IGuiLifeCycleCallback
+
+void Model::onStart()
+{
+    LOG_INFO("Started\n");
+}
+
+void Model::onResume()
+{
+    mIsRunning = true;
+    resetIdleTimer();
+    invalidate();
+}
+
+void Model::onSuspend()
+{
+    mIsRunning = false;
+}
+
+void Model::onStop()
+{
+    LOG_INFO("Force exit from the application\n");
+}
+
+
+// ICustomMessageHandler
+
+bool Model::customMessageHandler(SDK::MessageBase* message)
+{
+    switch (message->getType()) {
+        case CustomMessage::SETTINGS_UPDATE: {
+            LOG_DEBUG("SETTINGS_UPDATE\n");
+            auto* msg          = static_cast<CustomMessage::SettingsUpd*>(message);
+            mSettings          = msg->settings;
+            mUnitsImperial     = msg->unitsImperial;
+            mTimeFormat12h     = msg->timeFormat12h;
+            memcpy(mHrThresholds, msg->hrThresholds, sizeof(mHrThresholds));
+            mHrThresholdsCount = msg->hrThresholdsCount;
+            modelListener->onSettings(mSettings);
+        } break;
+
+        case CustomMessage::LOCAL_TIME: {
+            auto* msg = static_cast<CustomMessage::Time*>(message);
+            std::tm newTime = msg->localTime;
+            LOG_DEBUG("LOCAL_TIME %04u-%02u-%02u %02u:%02u:%02u\n",
+                newTime.tm_year + 1900, newTime.tm_mon + 1, newTime.tm_mday,
+                newTime.tm_hour, newTime.tm_min, newTime.tm_sec);
+
+            const bool dateChanged = newTime.tm_year  != mTime.tm_year  ||
+                                     newTime.tm_mon   != mTime.tm_mon   ||
+                                     newTime.tm_mday  != mTime.tm_mday;
+            const bool timeChanged = newTime.tm_hour  != mTime.tm_hour  ||
+                                     newTime.tm_min   != mTime.tm_min   ||
+                                     newTime.tm_sec   != mTime.tm_sec;
+            mTime = newTime;
+
+            // Wall-clock seconds for pause-duration arithmetic. mktime()
+            // normalises a copy (it mutates its argument) and interprets the
+            // fields as local time, which is fine: only differences are used.
+            std::tm forEpoch = newTime;
+            const std::time_t nowSec = std::mktime(&forEpoch);
+            if (nowSec != static_cast<std::time_t>(-1)) {
+                mNowSec = nowSec;
+
+                // A pause that began before the clock arrived could not latch a
+                // start (see below); adopt the first real timestamp instead, so
+                // it counts from here rather than staying stuck at zero.
+                if (mTrackState == Track::State::PAUSED && mPauseStartSec == 0) {
+                    mPauseStartSec = mNowSec;
+                }
+            }
+
+            if (dateChanged) {
+                modelListener->onDate(mTime.tm_year + 1900, mTime.tm_mon + 1,
+                                      mTime.tm_mday, mTime.tm_wday);
+            }
+            if (timeChanged) {
+                modelListener->onTime(mTime.tm_hour, mTime.tm_min, mTime.tm_sec);
+            }
+        } break;
+
+        case CustomMessage::BATTERY: {
+            auto* msg = static_cast<CustomMessage::Battery*>(message);
+            LOG_DEBUG("BATTERY Level %u\n", msg->level);
+            if (mBatteryLevel != msg->level) {
+                mBatteryLevel = msg->level;
+                modelListener->onBatteryLevel(mBatteryLevel);
+            }
+        } break;
+
+        case CustomMessage::GPS_FIX: {
+            auto* msg = static_cast<CustomMessage::GpsFix*>(message);
+            LOG_DEBUG("GPS_FIX %u\n", msg->state);
+            if (mGpsFix != msg->state) {
+                mGpsFix = msg->state;
+                modelListener->onGpsFix(mGpsFix);
+            }
+        } break;
+
+        case CustomMessage::TRACK_STATE_UPDATE: {
+            LOG_DEBUG("TRACK_STATE_UPDATE\n");
+            auto* msg = static_cast<CustomMessage::TrackStateUpd*>(message);
+            if (mTrackState != msg->state) {
+                mTrackState = msg->state;
+                if (mTrackState == Track::State::PAUSED) {
+                    // mNowSec is 0 until the first LOCAL_TIME. Latching that and
+                    // then differencing it against a real epoch would report a
+                    // decades-long pause, so leave it unset (0) and let the
+                    // clock handler adopt the first real timestamp instead.
+                    mPauseStartSec = mNowSec;
+                }
+                modelListener->onTrackState(mTrackState);
+            }
+        } break;
+
+        case CustomMessage::TRACK_DATA_UPDATE: {
+            LOG_DEBUG("TRACK_DATA_UPDATE\n");
+            auto* msg  = static_cast<CustomMessage::TrackDataUpd*>(message);
+            mTrackData = msg->data;
+            modelListener->onTrackData(mTrackData);
+        } break;
+
+        case CustomMessage::LAP_END: {
+            LOG_DEBUG("LAP_END\n");
+            auto* msg = static_cast<CustomMessage::LapEnded*>(message);
+            modelListener->onLapChanged(msg->lapNum);
+        } break;
+
+        case CustomMessage::SUMMARY: {
+            LOG_DEBUG("SUMMARY\n");
+            auto* msg = static_cast<CustomMessage::Summary*>(message);
+            if (msg->summary) {
+                mActivitySummary = msg->summary;
+                modelListener->onActivitySummary(*mActivitySummary);
+            }
+        } break;
+
+        case CustomMessage::ACCESSORY_STATUS: {
+            auto* msg = static_cast<CustomMessage::AccessoryStatusUpd*>(message);
+            LOG_DEBUG("ACCESSORY_STATUS %u\n", msg->state);
+            if (mAccessoryState != msg->state) {
+                mAccessoryState = msg->state;
+                modelListener->onAccessoryStatus(msg->state, msg->name);
+            }
+        } break;
+
+        default:
+            break;
+    }
+
+    return true;
+}
