@@ -31,6 +31,11 @@ public:
     virtual void onGpsFix(bool acquired) override;
     virtual void onAccessoryStatus(uint8_t state, const char* name) override;  // WP-S4
 
+    virtual void onSettings(const Settings& settings) override;
+    virtual void onRouteInfo() override;
+
+    /// Choose a plain ride or the interval preset for the next start.
+    void setStartMode(bool intervals);
     void startTrack();
     void exitApp();
 

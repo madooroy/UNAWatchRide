@@ -34,6 +34,9 @@ public:
     virtual void onGpsFix(bool acquired) override;
     virtual void onAccessoryStatus(uint8_t state, const char* name) override;
     virtual void onTrackState(const Track::State& state) override;
+    virtual void onRideData(const Ride::Data& data) override;
+    virtual void onRouteInfo() override;
+    virtual void onRideAlert(const RideAlertInfo& alert) override;
 
     void saveLap();
 

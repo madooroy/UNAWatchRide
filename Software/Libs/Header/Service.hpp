@@ -17,6 +17,15 @@
 #include "ActivitySummarySerializer.hpp"
 #include "ActivityWriter.hpp"
 #include "Commands.hpp"
+#include "RideData.hpp"
+
+#include "Ride/ClimbDetector.hpp"
+#include "Ride/HrZoneCoach.hpp"
+#include "Ride/IntervalSession.hpp"
+#include "Ride/Route.hpp"
+#include "Ride/RouteFollower.hpp"
+
+#include "SDK/Fit/FitProfile.hpp"
 
 class Service
 {
@@ -36,6 +45,21 @@ private:
     static constexpr float    skMapDistanceThreshold = 10.0f; // meters
     static constexpr uint32_t skMapMaxPoints         = 70;
     static constexpr uint32_t skBatteryLogPeriodMs   = 5 * 60 * 1000;
+
+    // -- Ride features --------------------------------------------------------
+
+    /// The planned route: a GPX file the rider copies into the app's folder
+    /// (over USB mass storage, next to the .uapp).
+    static constexpr const char* skRoutePath     = "route.gpx";
+    static constexpr std::size_t skRouteChunk    = 1024;  ///< Bytes read per GPX chunk.
+    /// Side of the square the route is drawn into on the Route face, pixels:
+    /// the face's 150 px map less the GUI's 3 px inset on each side, which
+    /// keeps the line's round caps inside the widget.
+    static constexpr uint8_t     skRouteBox      = 144;
+    /// Ticks without a kernel GRADE sample before falling back to our own.
+    static constexpr uint8_t     skKernelGradeStaleTicks = 3;
+    /// GRADE subscribe attempts per ride before settling for our own grade.
+    static constexpr uint8_t     skGradeConnectTries = 3;
 
     /// Geometry of the live-speed filter, in 1 Hz track ticks. The receiver
     /// already averages its speed over 10 s, so the window only bridges a tick
@@ -141,6 +165,7 @@ private:
     SDK::Sensor::Connection mSensorBatteryLevel;
     SDK::Sensor::Connection mSensorBatteryMetrics;
     SDK::Sensor::Connection mSensorWristMotion;
+    SDK::Sensor::Connection mSensorGrade;   ///< Kernel barometric grade; absent on older kernels.
     bool                    mIsSensorsConnected = false;
 
     // -- Latched GPS speed (drives the smoothed live readout) ------------------
@@ -197,6 +222,27 @@ private:
     } mGps{};
 
     float mSeaLevelPressure = 0.0f; // Pa
+
+    // -- Ride features --------------------------------------------------------
+
+    Ride::ClimbDetector   mClimb;
+    Ride::HrZoneCoach     mHrCoach;
+    Ride::IntervalSession mIntervals;        ///< ~15 KB of program: a member, never a local.
+    Ride::Route           mRoute;            ///< ~32 KB route buffer.
+    Ride::RouteFollower   mFollower{mRoute};
+    Ride::RouteShape      mRouteShape{};     ///< Shared with the GUI by pointer (RouteInfo).
+    Ride::RouteState      mRouteState = Ride::RouteState::None;
+    Ride::Data            mRide{};
+    char                  mRouteChunk[skRouteChunk] = {};
+
+    float   mKernelGradePct   = 0.0f;
+    bool    mKernelGradeValid = false;
+    uint8_t mKernelGradeAge   = skKernelGradeStaleTicks;  ///< Ticks since the last grade sample.
+    uint8_t mGradeConnectTries = 0;         ///< GRADE subscribe attempts this ride.
+
+    /// The kernel's HR zone boundaries (also sent to the GUI).
+    uint8_t mHrThresholds[CustomMessage::kHrThresholdsCount] = {};
+    uint8_t mHrThresholdsCount = 0;
 
     // -- Track state ----------------------------------------------------------
 
@@ -285,15 +331,28 @@ private:
     // -- Track control --------------------------------------------------------
 
     void sendInitialInfoToGui();
-    void startTrack(std::time_t utc);
+    void startTrack(std::time_t utc, bool intervals);
     void processTrack();
-    void saveLap(float autoLapDistanceM = 0.0f);
+    void saveLap(float autoLapDistanceM = 0.0f,
+                 SDK::Fit::Intensity  intensity = SDK::Fit::Intensity::Active,
+                 SDK::Fit::LapTrigger trigger   = SDK::Fit::LapTrigger::Manual);
     void stopTrack(bool discard);
     void pauseTrack(bool pause, PauseSource source);
     void updateAutoPause();
     void buildPartialSummary();
     ActivityWriter::RecordData prepareRecordData();
     LapDivSource getLapDivSource();
+
+    // -- Ride features --------------------------------------------------------
+
+    void loadRoute();
+    void sendRouteInfo();
+    void processRide();
+    void updateRideData();
+    void onIntervalStepEnded(SDK::Fit::LapTrigger trigger);
+    uint32_t activeMs() const;
+    uint32_t activeCm() const;
+    static SDK::Fit::Intensity intensityOf(Ride::IntervalSession::Phase phase);
 
     // -- Notifications --------------------------------------------------------
 
@@ -304,6 +363,7 @@ private:
     void notifyLapEnd();
     void notifyAutoPause(bool paused);
     void notifyNewActivity();
+    void notifyRide(Ride::AlertKind kind, float a = 0.0f, float b = 0.0f, float c = 0.0f);
     void backlightOn(uint32_t timeoutMs = skBacklightTimeout);
     void playBuzzerPattern(uint16_t beepMs, uint8_t count = 1, uint16_t silenceMs = 100);
     void playVibroPattern(SDK::Message::RequestVibroPlay::Effect effect, uint8_t count = 1, uint16_t silenceMs = 100);

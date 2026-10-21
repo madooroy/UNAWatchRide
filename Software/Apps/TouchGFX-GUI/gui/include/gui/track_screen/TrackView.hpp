@@ -3,6 +3,10 @@
 
 #include <gui_generated/track_screen/TrackViewBase.hpp>
 #include <gui/track_screen/TrackPresenter.hpp>
+#include <gui/containers/TrackFaceClimb.hpp>
+#include <gui/containers/TrackFaceRoute.hpp>
+#include <gui/containers/TrackFaceIntervals.hpp>
+#include <gui/containers/RideBanner.hpp>
 
 class TrackView : public TrackViewBase
 {
@@ -29,6 +33,16 @@ public:
     /// Seconds spent in the current pause, rendered in the banner.
     void setPausedTime(std::time_t seconds);
 
+    // -- Ride features --------------------------------------------------------
+
+    /// Which optional faces this ride has. Rebuilds the face list.
+    void setRideFaces(bool intervals, bool route);
+    void setRoute(const Ride::RouteShape& shape);
+    void setRideData(const Ride::Data& data);
+    void showRideAlert(const RideAlertInfo& alert);
+
+    virtual void handleTickEvent() override;
+
 protected:
 
     virtual void handleKeyEvent(uint8_t key) override;
@@ -36,6 +50,21 @@ protected:
     // In-activity HR icon reflects the live source, recomputed from both the
     // accessory link state (engaged?) and the latest HR-sample source.
     void updateHrIcon();
+
+    /// Show face @p id and hide the others.
+    void showFace(uint16_t id);
+
+    TrackFaceClimb     mFaceClimb;
+    TrackFaceRoute     mFaceRoute;
+    TrackFaceIntervals mFaceIntervals;
+    RideBanner         mBanner;
+
+    /// Faces this ride cycles through, in order (FaceId values).
+    uint16_t mFaces[App::MenuNav::TrackView::ID_COUNT] = {};
+    uint16_t mFaceCount = 0;
+    bool     mScreenReady = false;
+    Track::Data mTrack {};
+    Ride::Data  mRide {};
 
     uint16_t mCurrentFaceId = 0;
     bool     mIsImperial = false;

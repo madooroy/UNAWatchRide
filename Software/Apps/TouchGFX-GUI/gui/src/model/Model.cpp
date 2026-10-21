@@ -159,7 +159,12 @@ uint8_t Model::getAccessoryState() const
 
 void Model::trackStart()
 {
-    SDK::send_msg<CustomMessage::TrackStart>(mKernel);
+    // An interval session opens on its countdown; a ride on the usual face.
+    mMenu.track.reset();
+    if (mStartIntervals) {
+        mMenu.track.set(App::MenuNav::TrackView::ID_INTERVALS);
+    }
+    SDK::send_msg<CustomMessage::TrackStart>(mKernel, mStartIntervals);
 }
 
 bool Model::isTrackActive() const
@@ -390,6 +395,41 @@ bool Model::customMessageHandler(SDK::MessageBase* message)
                 mActivitySummary = msg->summary;
                 modelListener->onActivitySummary(*mActivitySummary);
             }
+        } break;
+
+        case CustomMessage::RIDE_DATA_UPDATE: {
+            auto* msg = static_cast<CustomMessage::RideDataUpd*>(message);
+            mRide = msg->data;
+            modelListener->onRideData(mRide);
+        } break;
+
+        case CustomMessage::RIDE_ROUTE: {
+            auto* msg     = static_cast<CustomMessage::RouteInfo*>(message);
+            mRouteState   = static_cast<Ride::RouteState>(msg->state);
+            mRouteLengthM = msg->lengthM;
+            // Copy now: the shape belongs to the service. Inset it so the
+            // route line's round caps are not clipped at the box edge.
+            mRouteShape = Ride::RouteShape{};
+            if (msg->shape != nullptr) {
+                mRouteShape = *msg->shape;
+                for (uint8_t i = 0; i < mRouteShape.count; ++i) {
+                    mRouteShape.points[i].x = static_cast<uint8_t>(mRouteShape.points[i].x + kRouteInset);
+                    mRouteShape.points[i].y = static_cast<uint8_t>(mRouteShape.points[i].y + kRouteInset);
+                }
+            }
+            LOG_INFO("Route: state %u, %u points, %.1f km\n", msg->state,
+                     mRouteShape.count, mRouteLengthM / 1000.0f);
+            modelListener->onRouteInfo();
+        } break;
+
+        case CustomMessage::RIDE_ALERT: {
+            auto* msg = static_cast<CustomMessage::RideAlert*>(message);
+            RideAlertInfo info;
+            info.kind = static_cast<Ride::AlertKind>(msg->kind);
+            info.a = msg->a;
+            info.b = msg->b;
+            info.c = msg->c;
+            modelListener->onRideAlert(info);
         } break;
 
         case CustomMessage::ACCESSORY_STATUS: {

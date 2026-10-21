@@ -33,6 +33,12 @@ public:
 
     void saveAutoPause(bool state);
     void savePhoneNotif(bool state);
+    void saveClimbAlerts(bool state);
+    void saveRoute(bool state);
+    void saveHrTarget(uint8_t zone);
+    void saveIntervalPreset(uint8_t preset);
+
+    virtual void onRouteInfo() override;
 
 private:
     MenuSettingsPresenter();

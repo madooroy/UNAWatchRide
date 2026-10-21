@@ -39,6 +39,7 @@ public:
             ALTITUDE   = 1u << 2,
             HEART_RATE = 1u << 3,
             BATTERY    = 1u << 4,
+            GRADE      = 1u << 5,
         };
 
         void set(Field f)                 { mFlags |= mask(f); }
@@ -53,6 +54,7 @@ public:
         float       speed          = 0.0f;  // m/s
         float       altitude       = 0.0f;  // m
         float       heartRate      = 0.0f;  // bpm (arbitrated)
+        float       grade          = 0.0f;  // percent, positive uphill
         uint8_t     hrSource       = 0;     // HeartRateEx::Source (0=none,1=optical,2=external)
         uint8_t     hrOpticalBpm   = 0;     // raw wrist-optical (PPG) bpm (0 = none)
         uint8_t     hrExternalBpm  = 0;     // raw external strap bpm (0 = none)
@@ -80,6 +82,12 @@ public:
         float       hrMax     = 0.0f;   // bpm
         float       ascent    = 0.0f;   // m
         float       descent   = 0.0f;   // m
+        /// What kind of effort the lap was. Interval laps carry their step's
+        /// kind; every other lap is Active.
+        SDK::Fit::Intensity  intensity = SDK::Fit::Intensity::Active;
+        /// What ended the lap: the lap button, an auto-lap by time or
+        /// distance, or the end of the session.
+        SDK::Fit::LapTrigger trigger   = SDK::Fit::LapTrigger::Manual;
     };
 
     struct TrackData {

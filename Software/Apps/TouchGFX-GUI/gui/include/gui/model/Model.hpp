@@ -19,6 +19,8 @@
 #include "ActivitySummary.hpp"
 #include "Track.hpp"
 #include "AppMenu.hpp"
+#include "RideData.hpp"
+#include "Ride/Route.hpp"
 
 
 // ---------------------------------------------------------------------------
@@ -40,6 +42,12 @@ constexpr uint8_t kHrThresholdsCount = CustomMessage::kHrThresholdsCount;
 // App::Display -- minimum valid values for on-screen display.
 // Below these thresholds the widget shows "---" instead of a number.
 // ---------------------------------------------------------------------------
+/// A one-off Ride alert, as the banner shows it.
+struct RideAlertInfo {
+    Ride::AlertKind kind = Ride::AlertKind::None;
+    float a = 0.0f, b = 0.0f, c = 0.0f;
+};
+
 namespace App::Display
 {
 constexpr float kMinDist  = 0.0f;   ///< km or mi  -- negative = no data
@@ -91,6 +99,20 @@ public:
     // Latest external-HR link status (SDK::Accessory::State); the kernel only
     // sends on change, so screens read this on activate to show the current icon.
     uint8_t getAccessoryState() const;
+
+    // Ride features
+    const Ride::Data&       getRideData() const { return mRide; }
+    /// The route drawn for the Route face, inset by kRouteInset pixels;
+    /// count 0 without a route.
+    const Ride::RouteShape& getRouteShape() const { return mRouteShape; }
+    Ride::RouteState        getRouteState() const { return mRouteState; }
+    float                   getRouteLengthM() const { return mRouteLengthM; }
+    static constexpr uint8_t kRouteInset = 3;   ///< Room for the line's round caps.
+
+    /// How the next start runs: a plain ride, or the interval preset from
+    /// Settings. Set before Start, whether or not it then needs confirming.
+    void setStartIntervals(bool intervals) { mStartIntervals = intervals; }
+    bool getStartIntervals() const { return mStartIntervals; }
 
     // Track
     void trackStart();
@@ -165,6 +187,13 @@ private:
     /// service coalesces a multi-second gap into one message.
     std::time_t mNowSec        = 0;
     std::time_t mPauseStartSec = 0;
+
+    // Ride features (mirrored from Service)
+    Ride::Data       mRide {};
+    Ride::RouteShape mRouteShape {};
+    Ride::RouteState mRouteState     = Ride::RouteState::None;
+    float            mRouteLengthM   = 0.0f;
+    bool             mStartIntervals = false;
 };
 
 #endif // MODEL_HPP

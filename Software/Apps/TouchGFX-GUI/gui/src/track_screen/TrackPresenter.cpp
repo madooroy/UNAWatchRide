@@ -12,9 +12,19 @@ void TrackPresenter::activate()
     // Reset nested action menu position
     model->menu().track.action.reset();
 
-    view.setPositionId(model->menu().track.get());
-
     view.setConfig(model->isUnitsImperial(), model->getHrThresholds(), model->getHrThresholdsCount());
+
+    // The faces this ride has: the interval countdown during a session, the
+    // route face with a route (or a route file that failed, to say so).
+    const auto routeState = model->getRouteState();
+    const bool route = routeState == Ride::RouteState::Loaded ||
+                       routeState == Ride::RouteState::Following ||
+                       routeState == Ride::RouteState::Failed;
+    view.setRideFaces(model->getStartIntervals(), route);
+    view.setRoute(model->getRouteShape());
+    view.setRideData(model->getRideData());
+
+    view.setPositionId(model->menu().track.get());
     view.setTimeFormat(model->is12HourFormat());
 
     onTrackData(model->getTrackData());
@@ -82,6 +92,21 @@ void TrackPresenter::onGpsFix(bool acquired)
 void TrackPresenter::onAccessoryStatus(uint8_t state, const char* /*name*/)
 {
     view.setAccessoryStatus(state);
+}
+
+void TrackPresenter::onRideData(const Ride::Data& data)
+{
+    view.setRideData(data);
+}
+
+void TrackPresenter::onRouteInfo()
+{
+    view.setRoute(model->getRouteShape());
+}
+
+void TrackPresenter::onRideAlert(const RideAlertInfo& alert)
+{
+    view.showRideAlert(alert);
 }
 
 void TrackPresenter::saveLap()

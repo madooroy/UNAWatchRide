@@ -1,0 +1,9 @@
+# Normalise line endings in git. TouchGFX's converters write CRLF on every
+# platform; this keeps regenerated assets from showing as whole-file changes.
+* text=auto
+*.png  binary
+*.bmp  binary
+*.ttf  binary
+*.otf  binary
+*.a    binary
+*.uapp binary

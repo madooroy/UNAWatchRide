@@ -220,3 +220,70 @@ TEST(RouteFollower, InvalidRouteDoesNothing)
     EXPECT_EQ(f.tick(lat, lon, true), Event::None);
     EXPECT_FALSE(f.status().matched);
 }
+
+TEST(RouteFollower, LapsOfAShortCircuitAreCountedInOrder)
+{
+    // Three laps of a 400 m circuit: the search window reaches a whole lap
+    // ahead, so every point of the road is "nearest" three times over.
+    std::vector<std::pair<double, double>> corners;
+    for (int lap = 0; lap < 3; ++lap) {
+        corners.push_back({0, 0});
+        corners.push_back({150, 0});
+        corners.push_back({150, 50});
+        corners.push_back({0, 50});
+    }
+    corners.push_back({0, 0});
+    auto r = route(corners);
+    RouteFollower f(*r);
+    f.reset();
+
+    int arrived = 0;
+    auto lap = [&](double noise) {
+        const double pts[5][2] = {{0, 0}, {150, 0}, {150, 50}, {0, 50}, {0, 0}};
+        for (int c = 0; c < 4; ++c) {
+            const double e0 = pts[c][0], n0 = pts[c][1], e1 = pts[c + 1][0], n1 = pts[c + 1][1];
+            const int n = static_cast<int>(std::hypot(e1 - e0, n1 - n0) / 7.0);
+            for (int i = 1; i <= n; ++i) {
+                const double t = static_cast<double>(i) / n;
+                const double jitter = ((i * 7919) % 5 - 2) * noise;  // Deterministic +-2*noise m.
+                arrived += (tickAt(f, e0 + t * (e1 - e0) + jitter, n0 + t * (n1 - n0) - jitter)
+                            == Event::Arrived) ? 1 : 0;
+            }
+        }
+    };
+    lap(1.5);
+    EXPECT_NEAR(f.status().alongM, 400.0f, 15.0f);
+    EXPECT_EQ(arrived, 0);
+    lap(1.5);
+    EXPECT_NEAR(f.status().alongM, 800.0f, 15.0f);
+    EXPECT_EQ(arrived, 0);
+    lap(1.5);
+    EXPECT_EQ(arrived, 1);
+}
+
+TEST(RouteFollower, FastRiderIsNotHeldBack)
+{
+    // 20 m per fix (72 km/h): progress keeps up and the distance off stays true.
+    auto r = route({{0, 0}, {5000, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    for (int e = 0; e <= 3000; e += 20) {
+        tickAt(f, e, 3.0);
+        EXPECT_NEAR(f.status().alongM, static_cast<float>(e), 1.0f);
+        EXPECT_NEAR(f.status().offM, 3.0f, 0.5f);
+    }
+}
+
+TEST(RouteFollower, ShortOutAndBackSpur)
+{
+    // A 60 m dead-end spur ridden out and back, inside the search window.
+    auto r = route({{0, 0}, {500, 0}, {500, 60}, {500.5, 0}, {1000, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    for (int e = 0; e <= 500; e += 6) tickAt(f, e, 0);
+    for (int n = 0; n <= 60; n += 6) tickAt(f, 500, n);
+    for (int n = 60; n >= 0; n -= 6) tickAt(f, 500.3, n);
+    EXPECT_NEAR(f.status().alongM, 620.0f, 12.0f);
+    for (int e = 500; e <= 800; e += 6) tickAt(f, e, 0);
+    EXPECT_NEAR(f.status().alongM, 920.0f, 12.0f);
+}

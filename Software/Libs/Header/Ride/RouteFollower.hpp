@@ -6,14 +6,15 @@
  *
  * Matching
  * --------
- * Each fix is matched to the nearest point on the route. Searching only a
- * window around the last match -- a little behind, further ahead -- keeps
- * progress continuous where a route doubles back on itself (an out-and-back
- * along the same road, a figure of eight): the nearest segment overall may be
- * the other carriageway, a long way further along. Only when the window has
- * nothing within kReacquireM (the rider has taken a detour, or started part
- * way along) is the whole route searched, preferring a match ahead of the old
- * one.
+ * Each fix is matched to the route within a window around the last match --
+ * a little behind, further ahead. Where the route uses the same road more
+ * than once inside that window (laps of a short circuit, the return leg of an
+ * out-and-back, a figure of eight), several segments are about equally near;
+ * of those, the one whose progress is closest to the rider's progress a
+ * second ago wins, so progress stays continuous instead of jumping a lap.
+ * Only when the window has nothing within kReacquireM (a detour, or starting
+ * part way along) is the whole route searched, preferring a match ahead of
+ * the old one.
  *
  * Off course
  * ----------
@@ -44,6 +45,9 @@ public:
     static constexpr float   kFinishM     = 40.0f;   ///< Within this of the end counts as arrived.
     static constexpr uint16_t kBehindSegs = 10;
     static constexpr uint16_t kAheadSegs  = 80;
+    /// Progress expected between fixes when choosing among equally near
+    /// segments: a second at a typical riding speed.
+    static constexpr float    kExpectedAdvanceM = 6.0f;
 
     enum class Event : uint8_t {
         None,
@@ -81,6 +85,7 @@ private:
     };
 
     Match best(float x, float y, uint16_t from, uint16_t to) const;
+    Match bestNear(float x, float y, uint16_t from, uint16_t to, float expectedAlong) const;
 
     const Route& mRoute;
     Status       mStatus;

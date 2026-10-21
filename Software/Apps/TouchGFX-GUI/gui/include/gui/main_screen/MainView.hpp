@@ -22,11 +22,18 @@ public:
     void setPositionId(uint16_t id);
     uint16_t getPositionId();
 
+    /// The interval preset shown under "Intervals".
+    void setIntervalPreset(uint8_t preset);
+    /// The route shown under "Start": its length, or nothing without one.
+    void setRoute(Ride::RouteState state, float lengthM, bool isImperial);
+
 protected:
     using Menu = App::MenuNav::Root;
 
     bool mGpsFix = false;
     SDK::GUI::SensorStatusRow mSensorRow;
+
+    char mRouteTip[24] = "";
 
     MenuItemConfig mItems[Menu::ID_COUNT] {};
     MenuItemConfig mCenterItems[Menu::ID_COUNT] {};
@@ -42,6 +49,7 @@ protected:
 
     virtual void handleKeyEvent(uint8_t key) override;
     void onConfirm();
+    void start(bool intervals);
     void updateBackground(int16_t index);
 };
 

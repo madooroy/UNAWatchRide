@@ -79,10 +79,20 @@ Libs/Source/Fit/FitCrc.cpp\
 Libs/Source/Fit/FitWriter.cpp\
 Libs/Source/Fit/FitRecordCadence.cpp\
 Libs/Source/Fit/RecordingMarker.cpp\
+Libs/Source/Workout/WorkoutEngine.cpp\
+Libs/Source/Workout/Intervals.cpp\
+Libs/Source/Workout/TargetGauge.cpp\
+Libs/Source/Workout/WorkoutAlerts.cpp\
 ../../Libs/Sources/ActivitySummarySerializer.cpp\
 ../../Libs/Sources/ActivityWriter.cpp\
 ../../Libs/Sources/Service.cpp\
 ../../Libs/Sources/SettingsSerializer.cpp\
+../../Libs/Sources/Ride/ClimbDetector.cpp\
+../../Libs/Sources/Ride/HrZoneCoach.cpp\
+../../Libs/Sources/Ride/IntervalSession.cpp\
+../../Libs/Sources/Ride/GpxReader.cpp\
+../../Libs/Sources/Ride/Route.cpp\
+../../Libs/Sources/Ride/RouteFollower.cpp\
 ADDITIONAL_SOURCES :=
 ADDITIONAL_INCLUDE_PATHS := $(SDK)/Libs/Header\
 ../../Libs/Header\

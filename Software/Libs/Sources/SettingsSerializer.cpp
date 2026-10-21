@@ -58,6 +58,10 @@ bool SettingsSerializer::save(const Settings &settings)
     writer.add("phone_notif_en",   settings.phoneNotifEn);
     writer.add("alert_distance_id", static_cast<uint8_t>(settings.alertDistanceId));
     writer.add("alert_time_id",     static_cast<uint8_t>(settings.alertTimeId));
+    writer.add("climb_alerts_en",   settings.climbAlertsEn);
+    writer.add("hr_target_zone",    settings.hrTargetZone);
+    writer.add("interval_preset",   settings.intervalPreset);
+    writer.add("route_en",          settings.routeEn);
 
     writer.endMap();
 
@@ -132,6 +136,17 @@ bool SettingsSerializer::load(Settings &settings)
     settings.alertTimeId = timeId < Settings::Alerts::Time::ID_COUNT
         ? static_cast<Settings::Alerts::Time::Id>(timeId)
         : Settings::Alerts::Time::ID_OFF;
+
+    // Ride features. Absent in a version 1 file: the defaults stay.
+    reader.get("climb_alerts_en", settings.climbAlertsEn);
+    reader.get("route_en",        settings.routeEn);
+    uint8_t hrZone = settings.hrTargetZone;
+    uint8_t preset = settings.intervalPreset;
+    reader.get("hr_target_zone",  hrZone);
+    reader.get("interval_preset", preset);
+    settings.hrTargetZone   = hrZone <= Settings::kHrTargetMax ? hrZone : 0;
+    settings.intervalPreset = preset;   // Clamped by IntervalSession::start().
+    settings.version        = Settings::kVersion;
 
     // Distance and time auto-laps are mutually exclusive. Normalize a legacy
     // file that has both enabled by keeping distance (which getLapDivSource()

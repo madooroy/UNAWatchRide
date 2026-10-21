@@ -9,16 +9,6 @@
 
 namespace Ride {
 
-// Common bike interval formats: VO2max, threshold, short and very short
-// efforts, and sweet spot. Labels are ASCII so every font can render them.
-const IntervalSession::Preset IntervalSession::kPresets[kPresetCount] = {
-    {"5x 3:00/2:00",  5, 180, 120},
-    {"4x 8:00/4:00",  4, 480, 240},
-    {"8x 1:00/1:00",  8,  60,  60},
-    {"10x 0:30/0:30", 10, 30,  30},
-    {"3x12:00/5:00",  3, 720, 300},
-};
-
 void IntervalSession::start(uint8_t preset, uint32_t timeMs, uint32_t distanceCm)
 {
     if (preset >= kPresetCount) {
@@ -129,19 +119,6 @@ uint32_t IntervalSession::remainingSec() const
         return 0;
     }
     return (st.remainingMs + 999u) / 1000u;
-}
-
-const char* IntervalSession::phaseName(Phase p)
-{
-    switch (p) {
-    case Phase::WarmUp:   return "WARM UP";
-    case Phase::Work:     return "WORK";
-    case Phase::Rest:     return "REST";
-    case Phase::CoolDown: return "COOL DOWN";
-    case Phase::Done:     return "DONE";
-    case Phase::None:
-    default:              return "";
-    }
 }
 
 }  // namespace Ride

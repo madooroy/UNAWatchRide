@@ -2,6 +2,7 @@
 #define TRACKFACEOVERVIEW_HPP
 
 #include <gui_generated/containers/TrackFaceOverviewBase.hpp>
+#include <gui/containers/RideUi.hpp>
 
 /**
  * @brief Track face showing average speed, elevation and heart rate zone.
@@ -40,7 +41,16 @@ public:
      */
     void setElevation(float elevation, bool isImperial);
 
+    /**
+     * @brief Show the HR target zone beside the heart rate, coloured by where
+     *        the heart rate sits against it: green in, red above, blue below,
+     *        grey while undecided. Hidden when @p zone is 0 (coaching off).
+     * @param state SDK::Workout::Zone as a byte.
+     */
+    void setHrTarget(uint8_t zone, uint8_t state);
+
 protected:
+    RideUi::Text<8> mHrTarget;   ///< Added in code, so Designer regeneration keeps it.
 };
 
 #endif // TRACKFACEOVERVIEW_HPP

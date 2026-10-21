@@ -12,6 +12,8 @@
 #include "Settings.hpp"
 #include "Track.hpp"
 #include "ActivitySummary.hpp"
+#include "RideData.hpp"
+#include "Ride/Route.hpp"
 
 // Force 4-byte alignment for all message structures
 #pragma pack(push, 4)
@@ -33,6 +35,9 @@ namespace CustomMessage {
     constexpr SDK::MessageType::Type LAP_END            = 0x00000007;
     constexpr SDK::MessageType::Type SUMMARY            = 0x00000008;
     constexpr SDK::MessageType::Type ACCESSORY_STATUS   = 0x00000012;
+    constexpr SDK::MessageType::Type RIDE_DATA_UPDATE   = 0x00000020;
+    constexpr SDK::MessageType::Type RIDE_ROUTE         = 0x00000021;
+    constexpr SDK::MessageType::Type RIDE_ALERT         = 0x00000022;
 
     // GUI --> Service
     constexpr SDK::MessageType::Type SETTINGS_SAVE      = 0x0000000A;
@@ -193,6 +198,61 @@ namespace CustomMessage {
         }
     };
 
+    // Ride features, once a second while the GUI runs.
+    struct RideDataUpd : public SDK::MessageBase {
+        Ride::Data data;
+        RideDataUpd()
+            : SDK::MessageBase(RIDE_DATA_UPDATE)
+            , data{}
+        {}
+
+        explicit RideDataUpd(const Ride::Data& data)
+            : RideDataUpd()
+        {
+            this->data = data;
+        }
+    };
+
+    // The route and its drawing, when the GUI starts and when it changes.
+    struct RouteInfo : public SDK::MessageBase {
+        const Ride::RouteShape* shape;  ///< Non-owning; receiver must copy before releaseMessage. May be null.
+        float    lengthM;
+        uint8_t  state;                 ///< Ride::RouteState.
+        RouteInfo()
+            : SDK::MessageBase(RIDE_ROUTE)
+            , shape(nullptr)
+            , lengthM(0.0f)
+            , state(0)
+        {}
+
+        explicit RouteInfo(const Ride::RouteShape* shape, float lengthM, Ride::RouteState state)
+            : RouteInfo()
+        {
+            this->shape   = shape;
+            this->lengthM = lengthM;
+            this->state   = static_cast<uint8_t>(state);
+        }
+    };
+
+    // A one-off event worth a banner (the service plays the buzz itself).
+    struct RideAlert : public SDK::MessageBase {
+        uint8_t kind;   ///< Ride::AlertKind.
+        float   a, b, c;
+        RideAlert()
+            : SDK::MessageBase(RIDE_ALERT)
+            , kind(0), a(0.0f), b(0.0f), c(0.0f)
+        {}
+
+        explicit RideAlert(Ride::AlertKind kind, float a = 0.0f, float b = 0.0f, float c = 0.0f)
+            : RideAlert()
+        {
+            this->kind = static_cast<uint8_t>(kind);
+            this->a = a;
+            this->b = b;
+            this->c = c;
+        }
+    };
+
     // GUI --> Service
     struct SettingsSave : public SDK::MessageBase {
         // Application settings
@@ -210,7 +270,17 @@ namespace CustomMessage {
     };
 
     struct TrackStart : public SDK::MessageBase {
-        TrackStart() : SDK::MessageBase(TRACK_START) {}
+        bool intervals;   ///< Run the interval preset chosen in Settings.
+        TrackStart()
+            : SDK::MessageBase(TRACK_START)
+            , intervals(false)
+        {}
+
+        explicit TrackStart(bool intervals)
+            : TrackStart()
+        {
+            this->intervals = intervals;
+        }
     };
 
     struct TrackStop : public SDK::MessageBase {
@@ -239,6 +309,14 @@ namespace CustomMessage {
         ManualLap() : SDK::MessageBase(MANUAL_LAP) {}
     };
 
+
+    // The kernel's largest message block is 256 bytes. Sizes are for the
+    // 32-bit target (MessageBase is 32 bytes there); skipped on host builds.
+#if __SIZEOF_POINTER__ == 4
+    static_assert(sizeof(TrackDataUpd) <= 256, "TrackDataUpd must fit a message block");
+    static_assert(sizeof(RideDataUpd)  <= 256, "RideDataUpd must fit a message block");
+    static_assert(sizeof(SettingsUpd)  <= 256, "SettingsUpd must fit a message block");
+#endif
 
 } // namespace CustomMessage
 

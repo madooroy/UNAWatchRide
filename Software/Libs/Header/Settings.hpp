@@ -18,8 +18,13 @@
  * @brief Application settings persisted to storage.
  */
 struct Settings {
-    /// Settings version.
-    static constexpr uint8_t kVersion = 1;
+    /// Settings version. 2 added the Ride features (climb alerts, HR target
+    /// zone, interval preset, route following); version 1 files load with
+    /// their defaults.
+    static constexpr uint8_t kVersion = 2;
+
+    /// HR target zone: 0 off, 1..5 a zone of the kernel's HR thresholds.
+    static constexpr uint8_t kHrTargetMax = 5;
 
     struct Alerts {
         struct Distance {
@@ -55,6 +60,12 @@ struct Settings {
     bool     phoneNotifEn = true;   ///< Flag to enable receiving phone notification when app is run.
     Alerts::Distance::Id alertDistanceId = Alerts::Distance::ID_OFF;    ///< Distance alert option.
     Alerts::Time::Id     alertTimeId     = Alerts::Time::ID_OFF;        ///< Time alert option.
+
+    // -- Ride features (version 2) ------------------------------------------
+    bool     climbAlertsEn  = true;  ///< Buzz at the start and summit of each climb.
+    uint8_t  hrTargetZone   = 0;     ///< Zone to hold (1..5); 0 = off.
+    uint8_t  intervalPreset = 0;     ///< Index into Ride::IntervalSession::kPresets.
+    bool     routeEn        = true;  ///< Follow route.gpx when the app has one.
 };
 
 #endif // SETTINGS_HPP

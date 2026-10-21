@@ -24,6 +24,9 @@
 #include "SDK/SensorLayer/DataParsers/SensorDataParserBatteryLevel.hpp"
 #include "SDK/SensorLayer/DataParsers/SensorDataParserBatteryMetrics.hpp"
 #include "SDK/SensorLayer/DataParsers/SensorDataParserWristMotion.hpp"
+#include "SDK/SensorLayer/DataParsers/SensorDataParserGrade.hpp"
+
+#include "Ride/GpxReader.hpp"
 
 #define LOG_MODULE_PRX      "Service"
 #define LOG_MODULE_LEVEL    LOG_LEVEL_INFO
@@ -66,6 +69,7 @@ Service::Service(SDK::Kernel &kernel)
         , mSensorBatteryLevel(SDK::Sensor::Type::BATTERY_LEVEL)
         , mSensorBatteryMetrics(SDK::Sensor::Type::BATTERY_METRICS, skSamplePeriod, skSampleLatency)
         , mSensorWristMotion(SDK::Sensor::Type::WRIST_MOTION)
+        , mSensorGrade(SDK::Sensor::Type::GRADE, skSamplePeriod, skSampleLatency)
         , mTimeTracker(kernel.sys)
         , mAltitudeFilter(0.8f)
         , mAltitudeCounter()
@@ -78,6 +82,9 @@ Service::Service(SDK::Kernel &kernel)
     mSpeedFilter.init(0.5f, 300.0f);    // same valid range as the raw counter
     mHrCounter.init(20.0f, 300.0f);
     mAltitudeCounter.init(2.0f);
+
+    memcpy(mHrThresholds, CustomMessage::kHrThresholdsDefault, sizeof(mHrThresholds));
+    mHrThresholdsCount = CustomMessage::kHrThresholdsCount;
 }
 
 Service::~Service()
@@ -96,6 +103,9 @@ void Service::run()
     if (!mSettingsSerializer.load(mSettings)) {
         LOG_WARNING("Failed to load settings\n");
     }
+
+    // Load the planned route, if the rider has copied one in.
+    loadRoute();
 
     // Get summary
     if (!mActivitySummarySerializer.load(mSummary)) {
@@ -268,6 +278,13 @@ void Service::connectSensors()
     if (!mSensorGpsDistance.isConnected())    { mSensorGpsDistance.connect(); }
     if (!mSensorPressure.isConnected())       { mSensorPressure.connect(); }
     if (!mSensorHr.isConnected())             { mSensorHr.connect(); }
+    // GRADE only exists on kernels that compute it; without it the climb
+    // detector's own grade is used. A failed subscribe can block for up to
+    // 100 ms, so it is tried a few times per ride, not on every tick.
+    if (!mSensorGrade.isConnected() && mGradeConnectTries < skGradeConnectTries) {
+        ++mGradeConnectTries;
+        mSensorGrade.connect();
+    }
 
     mIsSensorsConnected = true;
 }
@@ -278,6 +295,7 @@ void Service::disconnect()
         LOG_DEBUG("Disconnect from sensors...\n");
 
         mSensorHr.disconnect();
+        mSensorGrade.disconnect();
         mSensorPressure.disconnect();
         mSensorGpsSpeed.disconnect();
         mSensorGpsDistance.disconnect();
@@ -356,6 +374,13 @@ void Service::handleSensorsData(uint16_t handle, SDK::Sensor::DataBatch& data)
                       parser.getBpm(), parser.getTrustLevel(), mHrSource,
                       mHrOpticalBpm, mHrExternalBpm);
         }
+    } else if (mSensorGrade.matchesDriver(handle)) {
+        SDK::SensorDataParser::Grade parser(data[0]);
+        if (parser.isDataValid()) {
+            mKernelGradeValid = parser.isGradeValid();
+            mKernelGradePct   = parser.getGradePct();
+            mKernelGradeAge   = 0;
+        }
     } else if (mSensorBatteryLevel.matchesDriver(handle)) {
         SDK::SensorDataParser::BatteryLevel parser(data[0]);
         if (parser.isDataValid()) {
@@ -416,7 +441,7 @@ void Service::handleEvent(const CustomMessage::TrackStart& event)
     // We can synchronize the time because we haven't started the track yet,
     // and the GPS could have already updated the current time.
     mTimeTracker.init();
-    startTrack(mTimeTracker.getExpectedUTC());
+    startTrack(mTimeTracker.getExpectedUTC(), event.intervals);
 }
 
 void Service::handleEvent(const CustomMessage::TrackStop& event)
@@ -427,11 +452,18 @@ void Service::handleEvent(const CustomMessage::TrackStop& event)
 void Service::handleEvent(const CustomMessage::SettingsSave& event)
 {
     bool updCaps = mSettings.phoneNotifEn != event.settings.phoneNotifEn;
+    const bool routeChanged = mSettings.routeEn != event.settings.routeEn;
     mSettings = event.settings;
     mSettingsSerializer.save(event.settings);
 
     if (updCaps) {
         setCapabilities();
+    }
+
+    // Route following switched on or off before a ride: (re)load or drop it.
+    if (routeChanged && mTrackState == Track::State::INACTIVE) {
+        loadRoute();
+        sendRouteInfo();
     }
 }
 
@@ -447,6 +479,15 @@ void Service::handleEvent(const CustomMessage::TrackResume& /*event*/)
 
 void Service::handleEvent(const CustomMessage::ManualLap& /*event*/)
 {
+    // During intervals the lap button moves to the next step: it ends an open
+    // warm-up or cool-down, or cuts an effort or rest short.
+    if (mIntervals.active() && mIntervals.phase() != Ride::IntervalSession::Phase::Done) {
+        if (mIntervals.next(activeMs(), activeCm()) != Ride::IntervalSession::Change::None) {
+            onIntervalStepEnded(SDK::Fit::LapTrigger::Manual);
+        }
+        return;
+    }
+
     saveLap();
     SDK::send_msg<CustomMessage::LapEnded>(mKernel, mTrackData.lapNum);
     notifyLapEnd();
@@ -609,6 +650,9 @@ ActivityWriter::RecordData Service::prepareRecordData()
     fitRecord.set(ActivityWriter::RecordData::Field::ALTITUDE, mAltitudeCounter.isValid());
     fitRecord.altitude = mAltitudeCounter.getCurrent();
 
+    fitRecord.set(ActivityWriter::RecordData::Field::GRADE, mRide.gradeValid);
+    fitRecord.grade = mRide.gradePct;
+
     bool hasHeartRate = (mHrCounter.getCurrent() > 20 && mTrackData.hrTrustLevel >= 1 && mTrackData.hrTrustLevel <= 3);
     fitRecord.set(ActivityWriter::RecordData::Field::HEART_RATE, hasHeartRate);
     fitRecord.heartRate = mHrCounter.getCurrent();
@@ -634,9 +678,10 @@ ActivityWriter::RecordData Service::prepareRecordData()
 
 void Service::sendInitialInfoToGui()
 {
-    uint8_t hrThresholds[CustomMessage::kHrThresholdsCount];
+    uint8_t (&hrThresholds)[CustomMessage::kHrThresholdsCount] = mHrThresholds;
     memcpy(hrThresholds, CustomMessage::kHrThresholdsDefault, sizeof(hrThresholds));
-    uint8_t hrThresholdsCount = CustomMessage::kHrThresholdsCount;
+    uint8_t& hrThresholdsCount = mHrThresholdsCount;
+    hrThresholdsCount = CustomMessage::kHrThresholdsCount;
 
     if (auto msg = SDK::make_msg<SDK::Message::RequestSystemSettings>(mKernel)) {
         if (msg.send(100) && msg.ok()) {
@@ -669,9 +714,13 @@ void Service::sendInitialInfoToGui()
     SDK::send_msg<CustomMessage::SettingsUpd>(mKernel, mSettings, mIsImperial, mTimeFormat12h, hrThresholds, hrThresholdsCount);
     SDK::send_msg<CustomMessage::Summary>(mKernel, &mSummary);
     SDK::send_msg<CustomMessage::Battery>(mKernel, static_cast<uint8_t>(mBatterySoc.get()));
+
+    sendRouteInfo();
+    updateRideData();
+    SDK::send_msg<CustomMessage::RideDataUpd>(mKernel, mRide);
 }
 
-void Service::startTrack(std::time_t utc)
+void Service::startTrack(std::time_t utc, bool intervals)
 {
     // Reset data
     mTrackData = {};
@@ -710,8 +759,27 @@ void Service::startTrack(std::time_t utc)
     SDK::TrackMapBuilder::GpsPoint startGpsPoint{ mGps.latitude, mGps.longitude };
     mTrackMapBuilder.setDistanceThreshold(startGpsPoint, skMapDistanceThreshold);
 
-    // Determine lap split source
-    mLapDivSource = getLapDivSource();
+    // Determine lap split source. An interval session owns the laps: each
+    // step is one, so distance/time auto-laps are off for it.
+    mLapDivSource = intervals ? LapDivSource::OFF : getLapDivSource();
+
+    // Ride features start fresh with every ride.
+    mClimb.reset();
+    mHrCoach.configure(mSettings.hrTargetZone, mHrThresholds, mHrThresholdsCount);
+    mHrCoach.start();
+    mFollower.reset();
+    if (mRouteState == Ride::RouteState::Loaded) {
+        mRouteState = Ride::RouteState::Following;
+    }
+    mKernelGradeValid  = false;
+    mKernelGradeAge    = skKernelGradeStaleTicks;
+    mGradeConnectTries = 0;
+    if (intervals) {
+        mIntervals.start(mSettings.intervalPreset, 0, 0);
+        LOG_INFO("Intervals: %s\n", Ride::IntervalSession::kPresets[mIntervals.preset()].label);
+    } else {
+        mIntervals.stop();
+    }
 
     connectSensors();
 
@@ -819,8 +887,15 @@ void Service::processTrack()
     // Elevation, m
     mTrackData.elevation = mAltitudeCounter.getCurrent();
 
+    // Climbs, HR zone, intervals and the route: active seconds only.
+    if (mTrackState == Track::State::ACTIVE) {
+        processRide();
+    }
+    updateRideData();
+
     // Update GUI
     SDK::send_msg<CustomMessage::TrackDataUpd>(mKernel, mTrackData);
+    SDK::send_msg<CustomMessage::RideDataUpd>(mKernel, mRide);
 
     if (mTrackState == Track::State::ACTIVE) {
         // Save record to the FIT file
@@ -832,17 +907,20 @@ void Service::processTrack()
 
         bool  switchLap        = false;
         float autoLapDistanceM = 0.0f;  // >0 marks a grid-aligned distance auto-lap
+        SDK::Fit::LapTrigger lapTrigger = SDK::Fit::LapTrigger::Manual;
         switch (mLapDivSource) {
         case LapDivSource::DISTANCE: {
             const float target = Settings::Alerts::Distance::toMeters(mSettings.alertDistanceId, mIsImperial);
             if (mDistanceCounter.getLapValueActive() >= target) {
                 switchLap        = true;
                 autoLapDistanceM = target;
+                lapTrigger       = SDK::Fit::LapTrigger::Distance;
             }
             break;
         }
         case LapDivSource::TIME:
             switchLap = static_cast<uint32_t>(mTimeCounter.getLapValueActive()) >= Settings::Alerts::Time::toSeconds(mSettings.alertTimeId);
+            lapTrigger = SDK::Fit::LapTrigger::Time;
             break;
         case LapDivSource::OFF:
         default:
@@ -865,14 +943,15 @@ void Service::processTrack()
                 SDK::send_msg<CustomMessage::TrackDataUpd>(mKernel, mTrackData);
             }
 
-            saveLap(autoLapDistanceM);
+            saveLap(autoLapDistanceM, SDK::Fit::Intensity::Active, lapTrigger);
             SDK::send_msg<CustomMessage::LapEnded>(mKernel, mTrackData.lapNum);
             notifyLapEnd();
         }
     }
 }
 
-void Service::saveLap(float autoLapDistanceM)
+void Service::saveLap(float autoLapDistanceM, SDK::Fit::Intensity intensity,
+                      SDK::Fit::LapTrigger trigger)
 {
     const auto  lapTime     = mTimeCounter.getLapValueActive();
     // A distance auto-lap (autoLapDistanceM > 0) is recorded as exactly the
@@ -918,6 +997,9 @@ void Service::saveLap(float autoLapDistanceM)
 
     fitLap.ascent    = mAltitudeCounter.getLapAscent();
     fitLap.descent   = mAltitudeCounter.getLapDescent();
+
+    fitLap.intensity = intensity;
+    fitLap.trigger   = trigger;
 
     mActivityWriter.addLap(fitLap);
 
@@ -984,7 +1066,11 @@ void Service::stopTrack(bool discard)
         }
 
         if (mLapNotEmpty) {
-            saveLap();
+            // The last lap of an interval session is whatever step was running.
+            const auto intensity = mIntervals.active()
+                                       ? intensityOf(mIntervals.phase())
+                                       : SDK::Fit::Intensity::Active;
+            saveLap(0.0f, intensity, SDK::Fit::LapTrigger::SessionEnd);
         }
 
         // No final record: the activity ends at the pause instant below, so a
@@ -1036,6 +1122,10 @@ void Service::stopTrack(bool discard)
     mTrackState  = Track::State::INACTIVE;
     mPauseSource = PauseSource::NONE;
     mAutoPause.reset();
+    mIntervals.stop();
+    if (mRouteState == Ride::RouteState::Following) {
+        mRouteState = Ride::RouteState::Loaded;
+    }
     LOG_INFO("Track stopped. UTC: %u\n", static_cast<uint32_t>(mTimeCounter.getEndValue()));
     LOG_INFO("Time: %u / %u s\n", static_cast<uint32_t>(mTimeCounter.getValueActive()), static_cast<uint32_t>(mTimeCounter.getValueTotal()));
     LOG_INFO("Distance: %.3f m\n", mDistanceCounter.getValueActive());
@@ -1118,6 +1208,7 @@ void Service::pauseTrack(bool pause, PauseSource source)
         mSpeedFilter.resetHistory();
         mHrCounter.resume();
         mAltitudeCounter.resume();
+        mHrCoach.resume();   // Hold the zone off while the heart rate settles.
 
         mActivityWriter.resume(mTimeCounter.getCurrent(),
                                source == PauseSource::AUTO);
@@ -1222,3 +1313,258 @@ Service::LapDivSource Service::getLapDivSource()
     return LapDivSource::OFF;
 }
 
+// =============================================================================
+// Ride features
+// =============================================================================
+
+namespace {
+
+bool addRoutePoint(void* ctx, double lat, double lon)
+{
+    static_cast<Ride::Route*>(ctx)->add(lat, lon);
+    return true;
+}
+
+}  // namespace
+
+void Service::loadRoute()
+{
+    mRoute.begin();
+    mFollower.reset();
+    mRouteShape = Ride::RouteShape{};
+
+    if (!mSettings.routeEn) {
+        mRouteState = Ride::RouteState::Disabled;
+        return;
+    }
+
+    std::unique_ptr<SDK::Interface::IFile> file = mKernel.fs.file(skRoutePath);
+    if (!file || !file->exist()) {
+        mRouteState = Ride::RouteState::None;
+        return;
+    }
+    if (!file->open(false, false)) {
+        LOG_WARNING("Route: cannot open %s\n", skRoutePath);
+        mRouteState = Ride::RouteState::Failed;
+        return;
+    }
+
+    // Stream the file through the reader: a GPX export can be megabytes, and
+    // only the thinned route is kept.
+    Ride::GpxReader reader(addRoutePoint, &mRoute);
+    size_t read = 0;
+    while (file->read(mRouteChunk, sizeof(mRouteChunk), read) && read > 0) {
+        reader.feed(mRouteChunk, read);
+        if (read < sizeof(mRouteChunk)) {
+            break;
+        }
+    }
+    file->close();
+    mRoute.finish();
+
+    if (!mRoute.valid()) {
+        LOG_WARNING("Route: no usable points in %s (%u read, %u rejected)\n", skRoutePath,
+                    static_cast<unsigned>(reader.pointsRead()),
+                    static_cast<unsigned>(reader.pointsRejected()));
+        mRouteState = Ride::RouteState::Failed;
+        return;
+    }
+
+    mRoute.buildShape(mRouteShape, skRouteBox);
+    mRouteState = Ride::RouteState::Loaded;
+    LOG_INFO("Route: %u points read, %u kept (tolerance %.1f m), %.1f km\n",
+             static_cast<unsigned>(reader.pointsRead()), static_cast<unsigned>(mRoute.size()),
+             mRoute.toleranceM(), mRoute.lengthM() / 1000.0f);
+}
+
+void Service::sendRouteInfo()
+{
+    const bool haveShape = mRoute.valid() && mRouteShape.count >= 2;
+    SDK::send_msg<CustomMessage::RouteInfo>(mKernel, haveShape ? &mRouteShape : nullptr,
+                                            mRoute.valid() ? mRoute.lengthM() : 0.0f,
+                                            mRouteState);
+}
+
+uint32_t Service::activeMs() const
+{
+    return static_cast<uint32_t>(mTimeCounter.getValueActive()) * 1000u;
+}
+
+uint32_t Service::activeCm() const
+{
+    return static_cast<uint32_t>(mDistanceCounter.getValueActive() * 100.0f);
+}
+
+SDK::Fit::Intensity Service::intensityOf(Ride::IntervalSession::Phase phase)
+{
+    using Phase = Ride::IntervalSession::Phase;
+    switch (phase) {
+    case Phase::WarmUp:   return SDK::Fit::Intensity::Warmup;
+    case Phase::Rest:     return SDK::Fit::Intensity::Rest;
+    case Phase::CoolDown: return SDK::Fit::Intensity::Cooldown;
+    case Phase::Work:
+    default:              return SDK::Fit::Intensity::Active;
+    }
+}
+
+void Service::onIntervalStepEnded(SDK::Fit::LapTrigger trigger)
+{
+    // Each step is a lap, tagged with its kind so analysis tools can tell the
+    // efforts from the recoveries.
+    saveLap(0.0f, intensityOf(mIntervals.endedPhase()), trigger);
+    SDK::send_msg<CustomMessage::LapEnded>(mKernel, mTrackData.lapNum);
+    notifyLapEnd();
+
+    notifyRide(Ride::AlertKind::IntervalStep, static_cast<float>(mIntervals.phase()),
+               static_cast<float>(mIntervals.rep()), static_cast<float>(mIntervals.reps()));
+    LOG_INFO("Interval step: %s %u/%u\n",
+             Ride::IntervalSession::phaseName(mIntervals.phase()),
+             static_cast<unsigned>(mIntervals.rep()), static_cast<unsigned>(mIntervals.reps()));
+}
+
+void Service::processRide()
+{
+    // -- Climbs ---------------------------------------------------------------
+    const auto climbEv = mClimb.tick(mDistanceCounter.getValueActive(),
+                                     mAltitudeCounter.getCurrent(),
+                                     mAltitudeCounter.isValid(),
+                                     static_cast<uint32_t>(mTimeCounter.getValueActive()));
+    if (climbEv == Ride::ClimbDetector::Event::Started) {
+        LOG_INFO("Climb started\n");
+        if (mSettings.climbAlertsEn) {
+            playVibroPattern(SDK::Message::RequestVibroPlay::Effect::SHORT_DOUBLE_CLICK_STRONG_1_100);
+            notifyRide(Ride::AlertKind::ClimbStarted);
+        }
+    } else if (climbEv == Ride::ClimbDetector::Event::Finished) {
+        const auto& c = mClimb.lastClimb();
+        LOG_INFO("Climb finished: %.0f m, +%.0f m, %.1f %%, VAM %.0f\n",
+                 c.distanceM, c.gainM, c.avgGradePct, c.vamMph);
+        if (mSettings.climbAlertsEn) {
+            backlightOn();
+            playBuzzerPattern(100, 2);
+            playVibroPattern(SDK::Message::RequestVibroPlay::Effect::LONG_DOUBLE_SHARP_CLICK_STRONG_1_100);
+            notifyRide(Ride::AlertKind::ClimbFinished, c.distanceM, c.gainM, c.avgGradePct);
+        }
+    }
+
+    // -- Heart-rate zone --------------------------------------------------------
+    const bool hasHr = (mHrCounter.getCurrent() > 20 && mTrackData.hrTrustLevel >= 1 &&
+                        mTrackData.hrTrustLevel <= 3);
+    using HrAlert = Ride::HrZoneCoach::Alert;
+    switch (mHrCoach.tick(mHrCounter.getCurrent(), hasHr)) {
+    case HrAlert::Above:
+        playVibroPattern(SDK::Message::RequestVibroPlay::Effect::PULSING_STRONG_1_100);
+        notifyRide(Ride::AlertKind::HrAbove, mHrCoach.targetZone());
+        break;
+    case HrAlert::Below:
+        playVibroPattern(SDK::Message::RequestVibroPlay::Effect::SOFT_BUMP_100, 2);
+        notifyRide(Ride::AlertKind::HrBelow, mHrCoach.targetZone());
+        break;
+    case HrAlert::BackIn:
+        playVibroPattern(SDK::Message::RequestVibroPlay::Effect::STRONG_CLICK_100);
+        notifyRide(Ride::AlertKind::HrBackIn, mHrCoach.targetZone());
+        break;
+    default:
+        break;
+    }
+
+    // -- Intervals --------------------------------------------------------------
+    if (mIntervals.active()) {
+        const auto t = mIntervals.update(activeMs(), activeCm());
+        if (t.change != Ride::IntervalSession::Change::None) {
+            onIntervalStepEnded(SDK::Fit::LapTrigger::Time);
+        } else if (t.beep) {
+            playBuzzerPattern(80);
+        }
+    }
+
+    // -- Route ------------------------------------------------------------------
+    if (mRouteState == Ride::RouteState::Following) {
+        using RouteEv = Ride::RouteFollower::Event;
+        switch (mFollower.tick(mGps.latitude, mGps.longitude, mGps.fix)) {
+        case RouteEv::OffCourse:
+            LOG_INFO("Off course (%.0f m)\n", mFollower.status().offM);
+            backlightOn();
+            playBuzzerPattern(200, 2);
+            playVibroPattern(SDK::Message::RequestVibroPlay::Effect::ALERT_750MS_100, 2);
+            notifyRide(Ride::AlertKind::OffCourse, mFollower.status().offM);
+            break;
+        case RouteEv::BackOnCourse:
+            LOG_INFO("Back on course\n");
+            playVibroPattern(SDK::Message::RequestVibroPlay::Effect::STRONG_CLICK_100);
+            notifyRide(Ride::AlertKind::BackOnCourse);
+            break;
+        case RouteEv::Arrived:
+            LOG_INFO("Route complete\n");
+            backlightOn();
+            playBuzzerPattern(150, 3);
+            playVibroPattern(SDK::Message::RequestVibroPlay::Effect::ALERT_750MS_100);
+            notifyRide(Ride::AlertKind::RouteArrived);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void Service::updateRideData()
+{
+    Ride::Data& d = mRide;
+
+    // Grade: the kernel's barometric estimate when it has a current one (10 s
+    // window, quick to follow the road), otherwise the climb detector's own
+    // (100 m window, steadier). A kernel without GRADE never sends a sample.
+    // Samples and ticks are both 1 Hz but not phase-locked, so a tick may see
+    // none: allow a few before treating the kernel's grade as gone.
+    if (mKernelGradeAge < skKernelGradeStaleTicks) {
+        ++mKernelGradeAge;
+    }
+    if (mKernelGradeValid && mKernelGradeAge < skKernelGradeStaleTicks) {
+        d.gradePct   = mKernelGradePct;
+        d.gradeValid = true;
+    } else {
+        d.gradePct   = mClimb.gradePct();
+        d.gradeValid = mClimb.gradeValid();
+    }
+
+    const Ride::ClimbStats cur = mClimb.current();
+    d.inClimb       = mClimb.inClimb();
+    d.climbDistM    = cur.distanceM;
+    d.climbGainM    = cur.gainM;
+    d.climbGradePct = cur.avgGradePct;
+    d.climbVamMph   = cur.vamMph;
+    d.climbedGainM  = mClimb.climbedGainM();
+    d.climbCount    = static_cast<uint8_t>(mClimb.climbCount() > 255 ? 255 : mClimb.climbCount());
+
+    const bool hasHr = mTrackData.hr > 20.0f;
+    d.hrZone        = hasHr ? Ride::HrZoneCoach::zoneOf(mTrackData.hr, mHrThresholds, mHrThresholdsCount) : 0;
+    d.hrTargetZone  = mHrCoach.targetZone();
+    d.hrTargetState = static_cast<uint8_t>(mHrCoach.zone());
+
+    d.ivPhase        = static_cast<uint8_t>(mIntervals.phase());
+    d.ivPreset       = mSettings.intervalPreset;
+    d.ivRep          = static_cast<uint16_t>(mIntervals.rep() > 0xFFFF ? 0xFFFF : mIntervals.rep());
+    d.ivReps         = static_cast<uint16_t>(mIntervals.reps());
+    d.ivRemainingSec = static_cast<uint16_t>(mIntervals.remainingSec() > 0xFFFF ? 0xFFFF : mIntervals.remainingSec());
+    d.ivStepSec      = mIntervals.active() ? mIntervals.stepSec() : 0;
+
+    const auto& rs   = mFollower.status();
+    d.routeState      = static_cast<uint8_t>(mRouteState);
+    d.routeLengthM    = mRoute.valid() ? mRoute.lengthM() : 0.0f;
+    d.routeMatched    = rs.matched;
+    d.routeOffM       = rs.offM;
+    d.routeAlongM     = rs.alongM;
+    d.routeRemainingM = rs.matched ? rs.remainingM : d.routeLengthM;
+    d.offCourse       = rs.offCourse;
+    d.arrived         = rs.arrived;
+    d.riderInside     = false;
+    if (rs.matched && mRouteShape.count >= 2) {
+        d.riderInside = Ride::Route::toScreen(mRouteShape, skRouteBox, rs.x, rs.y,
+                                              d.riderPx, d.riderPy);
+    }
+}
+
+void Service::notifyRide(Ride::AlertKind kind, float a, float b, float c)
+{
+    SDK::send_msg<CustomMessage::RideAlert>(mKernel, kind, a, b, c);
+}

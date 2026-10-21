@@ -6,7 +6,7 @@ using FaceId = App::MenuNav::TrackView::Id;
 
 TrackView::TrackView()
 {
-
+    setRideFaces(false, false);
 }
 
 void TrackView::setupScreen()
@@ -18,8 +18,18 @@ void TrackView::setupScreen()
     buttons.setR1(Buttons::NONE);
     buttons.setR2(Buttons::AMBER);
 
+    // The Ride faces sit with the Designer faces, under the pause banner.
+    mFaceClimb.setVisible(false);
+    mFaceRoute.setVisible(false);
+    mFaceIntervals.setVisible(false);
+    insert(&trackFaceTotal, mFaceIntervals);
+    insert(&trackFaceTotal, mFaceRoute);
+    insert(&trackFaceTotal, mFaceClimb);
+    add(mBanner);  // Over everything.
+
     scrollIndicator.setConfig(ScrollIndicator::kSmall);
-    scrollIndicator.setCount(FaceId::ID_COUNT);
+    scrollIndicator.setCount(mFaceCount);
+    mScreenReady = true;
 
     // The banner is an overlay on whichever face is showing, so its visibility
     // survives face changes and is driven only by the track state.
@@ -31,32 +41,65 @@ void TrackView::tearDownScreen()
     TrackViewBase::tearDownScreen();
 }
 
+void TrackView::setRideFaces(bool intervals, bool route)
+{
+    // Order: the interval countdown first when there is a session, then the
+    // ride numbers, the climb face, the route, the lap, and the clock.
+    mFaceCount = 0;
+    if (intervals) {
+        mFaces[mFaceCount++] = FaceId::ID_INTERVALS;
+    }
+    mFaces[mFaceCount++] = FaceId::ID_TRACK1;
+    mFaces[mFaceCount++] = FaceId::ID_TRACK2;
+    mFaces[mFaceCount++] = FaceId::ID_CLIMB;
+    if (route) {
+        mFaces[mFaceCount++] = FaceId::ID_ROUTE;
+    }
+    mFaces[mFaceCount++] = FaceId::ID_TRACK3;
+    mFaces[mFaceCount++] = FaceId::ID_TRACK4;
+
+    // The constructor builds the default list before setupScreen() has set
+    // the indicator up; it takes the count there.
+    if (mScreenReady) {
+        scrollIndicator.setCount(mFaceCount);
+        scrollIndicator.invalidate();
+    }
+}
+
+void TrackView::showFace(uint16_t id)
+{
+    touchgfx::Drawable* faces[] = {
+        &trackFaceTotal, &trackFaceOverview, &trackFaceLap, &trackFaceStatus,
+        &mFaceClimb, &mFaceRoute, &mFaceIntervals,
+    };
+    static_assert(sizeof(faces) / sizeof(faces[0]) == FaceId::ID_COUNT, "one face per id");
+    for (uint16_t i = 0; i < FaceId::ID_COUNT; ++i) {
+        const bool show = (i == id);
+        if (faces[i]->isVisible() != show) {
+            faces[i]->setVisible(show);
+            faces[i]->invalidate();
+        }
+    }
+}
+
 void TrackView::setPositionId(uint16_t id)
 {
-    if (id >= FaceId::ID_COUNT) {
-        id = FaceId::ID_COUNT - 1;
+    // id is a face (FaceId). A face this ride does not have (the route face
+    // after the route was switched off, say) falls back to the first one.
+    uint16_t index = 0;
+    for (uint16_t i = 0; i < mFaceCount; ++i) {
+        if (mFaces[i] == id) {
+            index = i;
+            break;
+        }
     }
-    mCurrentFaceId = id;
+    mCurrentFaceId = mFaces[index];
 
-    trackFaceOverview.setVisible(false);
-    trackFaceTotal.setVisible(false);
-    trackFaceLap.setVisible(false);
-    trackFaceStatus.setVisible(false);
+    scrollIndicator.setActiveId(index);
+    showFace(mCurrentFaceId);
 
-    scrollIndicator.setActiveId(id);
-
-    switch (id) {
-    case FaceId::ID_TRACK1: trackFaceTotal.setVisible(true);      break;
-    case FaceId::ID_TRACK2: trackFaceOverview.setVisible(true);   break;
-    case FaceId::ID_TRACK3: trackFaceLap.setVisible(true);        break;
-    case FaceId::ID_TRACK4: trackFaceStatus.setVisible(true);     break;
-    default: break;
-    }
-
-    trackFaceOverview.invalidate();
-    trackFaceTotal.invalidate();
-    trackFaceLap.invalidate();
-    trackFaceStatus.invalidate();
+    // A face shows its latest data straight away rather than on the next tick.
+    setRideData(mRide);
 }
 
 uint16_t TrackView::getPositionId()
@@ -105,6 +148,11 @@ void TrackView::setTrackData(const Track::Data& data)
     trackFaceLap.setDistance(distConv(data.lapDistance), mIsImperial);
     trackFaceLap.setTimer(data.lapTime);
 
+    mTrack = data;
+    if (mCurrentFaceId == FaceId::ID_INTERVALS) {
+        mFaceIntervals.setData(mRide, mTrack, mIsImperial);
+    }
+
     mHrSource = data.hrSource;
     updateHrIcon();
 }
@@ -121,24 +169,22 @@ void TrackView::setBatteryLevel(uint8_t level)
 
 void TrackView::handleKeyEvent(uint8_t key)
 {
-    const uint16_t minId = static_cast<uint16_t>(FaceId::ID_TRACK1);
+    uint16_t index = 0;
+    for (uint16_t i = 0; i < mFaceCount; ++i) {
+        if (mFaces[i] == mCurrentFaceId) {
+            index = i;
+            break;
+        }
+    }
 
     if (key == SDK::GUI::Button::L1) {
-        uint16_t p = mCurrentFaceId;
-        if (p <= minId) {
-            p = FaceId::ID_COUNT - 1;
-        } else {
-            p--;
-        }
-        setPositionId(p);
+        index = (index == 0) ? static_cast<uint16_t>(mFaceCount - 1) : static_cast<uint16_t>(index - 1);
+        setPositionId(mFaces[index]);
     }
 
     if (key == SDK::GUI::Button::L2) {
-        uint16_t p = mCurrentFaceId + 1u;
-        if (p >= FaceId::ID_COUNT) {
-            p = minId;
-        }
-        setPositionId(p);
+        index = static_cast<uint16_t>((index + 1u) % mFaceCount);
+        setPositionId(mFaces[index]);
     }
 
     if (key == SDK::GUI::Button::R1) {
@@ -186,4 +232,33 @@ void TrackView::updateHrIcon()
     // In-activity: icon follows the live HR source, not the raw link state.
     trackFaceStatus.setHr(SDK::GUI::SensorStatusRow::hrStateFromSource(
             mAccessoryState, mHrSource));
+}
+
+void TrackView::setRoute(const Ride::RouteShape& shape)
+{
+    mFaceRoute.setRoute(shape);
+}
+
+void TrackView::setRideData(const Ride::Data& data)
+{
+    mRide = data;
+    // Only the face on screen is redrawn; the others catch up when shown.
+    switch (mCurrentFaceId) {
+    case FaceId::ID_CLIMB:     mFaceClimb.setData(mRide, mIsImperial);             break;
+    case FaceId::ID_ROUTE:     mFaceRoute.setData(mRide, mIsImperial);             break;
+    case FaceId::ID_INTERVALS: mFaceIntervals.setData(mRide, mTrack, mIsImperial); break;
+    default: break;
+    }
+    trackFaceOverview.setHrTarget(mRide.hrTargetZone, mRide.hrTargetState);
+}
+
+void TrackView::showRideAlert(const RideAlertInfo& alert)
+{
+    mBanner.show(alert, mIsImperial);
+}
+
+void TrackView::handleTickEvent()
+{
+    TrackViewBase::handleTickEvent();
+    mBanner.tick(App::Config::kFrameRate);
 }

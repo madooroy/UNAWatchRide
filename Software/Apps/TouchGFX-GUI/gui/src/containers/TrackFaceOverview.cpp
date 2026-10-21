@@ -1,8 +1,13 @@
 #include <gui/containers/TrackFaceOverview.hpp>
 
+#include <SDK/GUI/Color.hpp>
+#include <SDK/Workout/TargetGauge.hpp>
+#include <cstdio>
+
 TrackFaceOverview::TrackFaceOverview()
 {
-
+    // Left of the HR value, mirroring the "HR" label on its right.
+    mHrTarget.init(*this, 28, 50, 47, 23, T_TMP_MEDIUM_18_R);
 }
 
 void TrackFaceOverview::initialize()
@@ -55,3 +60,24 @@ void TrackFaceOverview::setElevation(float elevation, bool isImperial)
     elevationUnits.invalidate();
 }
 
+
+void TrackFaceOverview::setHrTarget(uint8_t zone, uint8_t state)
+{
+    if (zone == 0) {
+        mHrTarget.set("");
+        return;
+    }
+    char s[8];
+    std::snprintf(s, sizeof(s), "Z%u", static_cast<unsigned>(zone));
+    mHrTarget.set(s);
+
+    using Zone = SDK::Workout::Zone;
+    uint32_t c = SDK::GUI::Color::GRAY;
+    switch (static_cast<Zone>(state)) {
+    case Zone::In:    c = SDK::GUI::Color::GREEN; break;
+    case Zone::Above: c = SDK::GUI::Color::RED;   break;
+    case Zone::Below: c = SDK::GUI::Color::SKY;   break;
+    default: break;
+    }
+    mHrTarget.setColor(RideUi::rgb(c));
+}

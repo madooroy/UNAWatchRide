@@ -44,6 +44,49 @@ RouteFollower::Match RouteFollower::best(float x, float y, uint16_t from, uint16
     return m;
 }
 
+RouteFollower::Match RouteFollower::bestNear(float x, float y, uint16_t from, uint16_t to,
+                                             float expectedAlong) const
+{
+    // Segments within kTieM of the nearest form passes: contiguous runs where
+    // the route goes by the rider. Where it uses the same road more than once
+    // inside the window (laps of a short circuit, the return leg of an
+    // out-and-back) there is more than one pass. Each pass's nearest point is
+    // where the rider would be on it; take the pass whose progress is closest
+    // to the rider's a second ago. Within a pass the nearest point always
+    // wins, so a fast rider is never held back along a straight road.
+    const Match nearest = best(x, y, from, to);
+    const float limit   = nearest.dist + kTieM;
+
+    Match chosen  = nearest;
+    float bestGap = 1e30f;
+    bool  inPass  = false;
+    Match local;
+    auto closePass = [&]() {
+        const float gap = local.along > expectedAlong ? local.along - expectedAlong
+                                                      : expectedAlong - local.along;
+        if (gap < bestGap) {
+            bestGap = gap;
+            chosen  = local;
+        }
+        inPass = false;
+    };
+    for (uint16_t i = from; i < to; ++i) {
+        const Match m = best(x, y, i, static_cast<uint16_t>(i + 1));
+        if (m.dist <= limit) {
+            if (!inPass || m.dist < local.dist) {
+                local = m;
+            }
+            inPass = true;
+        } else if (inPass) {
+            closePass();
+        }
+    }
+    if (inPass) {
+        closePass();
+    }
+    return chosen;
+}
+
 RouteFollower::Event RouteFollower::tick(double lat, double lon, bool fix)
 {
     if (!fix || !mRoute.valid()) {
@@ -90,7 +133,7 @@ RouteFollower::Event RouteFollower::tick(double lat, double lon, bool fix)
         const uint16_t seg  = mStatus.segment;
         const uint16_t from = seg > kBehindSegs ? static_cast<uint16_t>(seg - kBehindSegs) : 0;
         const uint16_t to   = (segs - seg) > kAheadSegs ? static_cast<uint16_t>(seg + kAheadSegs) : segs;
-        m = best(x, y, from, to);
+        m = bestNear(x, y, from, to, mStatus.alongM + kExpectedAdvanceM);
         if (m.dist > kReacquireM) {
             const Match g = searchAll(seg);
             if (g.dist < m.dist) {

@@ -1,5 +1,7 @@
 #include <gui/main_screen/MainView.hpp>
 #include <images/BitmapDatabase.hpp>
+#include <gui/containers/RideUi.hpp>
+#include "Ride/IntervalSession.hpp"
 
 
 MainView::MainView() :
@@ -61,6 +63,39 @@ uint16_t MainView::getPositionId()
     return menuLayout.getSelectedItem();
 }
 
+void MainView::setIntervalPreset(uint8_t preset)
+{
+    if (preset >= Ride::IntervalSession::kPresetCount) {
+        preset = 0;
+    }
+    mCenterItems[Menu::ID_INTERVALS].tipChar = Ride::IntervalSession::kPresets[preset].label;
+    menuLayout.invalidate();
+}
+
+void MainView::setRoute(Ride::RouteState state, float lengthM, bool isImperial)
+{
+    MenuItemConfig& c = mCenterItems[Menu::ID_START];
+    if (state == Ride::RouteState::Loaded || state == Ride::RouteState::Following) {
+        char d[12];
+        RideUi::distance(d, sizeof(d), lengthM, isImperial);
+        std::snprintf(mRouteTip, sizeof(mRouteTip), "Route %s %s", d, isImperial ? "mi" : "km");
+        c.style     = MenuItemConfig::TIP;
+        c.msgIdType = T_TMP_SEMIBOLD_30;
+        c.tipIdType = T_TMP_REGULAR_18;
+        c.tipChar   = mRouteTip;
+    } else if (state == Ride::RouteState::Failed) {
+        c.style     = MenuItemConfig::TIP;
+        c.msgIdType = T_TMP_SEMIBOLD_30;
+        c.tipIdType = T_TMP_REGULAR_18;
+        c.tipChar   = "Route file unreadable";
+    } else {
+        c.style     = MenuItemConfig::SIMPLE;
+        c.msgIdType = T_TMP_SEMIBOLD_35;
+        c.tipChar   = nullptr;
+    }
+    menuLayout.invalidate();
+}
+
 void MainView::setupItems()
 {
     // START
@@ -68,6 +103,15 @@ void MainView::setupItems()
     mCenterItems[Menu::ID_START].msgIdType = T_TMP_SEMIBOLD_35;
 
     mItems[Menu::ID_START].msgId = T_TEXT_START;
+
+
+    // INTERVALS (the preset goes underneath; see setIntervalPreset)
+    mCenterItems[Menu::ID_INTERVALS].style     = MenuItemConfig::TIP;
+    mCenterItems[Menu::ID_INTERVALS].msgChar   = "Intervals";
+    mCenterItems[Menu::ID_INTERVALS].msgIdType = T_TMP_SEMIBOLD_30;
+    mCenterItems[Menu::ID_INTERVALS].tipIdType = T_TMP_REGULAR_18;
+
+    mItems[Menu::ID_INTERVALS].msgChar = "Intervals";
 
 
     // SETTINGS
@@ -125,12 +169,11 @@ void MainView::onConfirm()
 
     switch (idx) {
     case Menu::ID_START:
-        if (mGpsFix) {
-            presenter->startTrack();
-            application().gotoTrackScreenNoTransition();
-        } else {
-            application().gotoTrackStartConfirmationScreenNoTransition();
-        }
+        start(false);
+        break;
+
+    case Menu::ID_INTERVALS:
+        start(true);
         break;
 
     case Menu::ID_SETTINGS:
@@ -142,10 +185,22 @@ void MainView::onConfirm()
     }
 }
 
+void MainView::start(bool intervals)
+{
+    presenter->setStartMode(intervals);
+    if (mGpsFix) {
+        presenter->startTrack();
+        application().gotoTrackScreenNoTransition();
+    } else {
+        application().gotoTrackStartConfirmationScreenNoTransition();
+    }
+}
+
 void MainView::updateBackground(int16_t index)
 {
     switch (index) {
         case Menu::ID_START:
+        case Menu::ID_INTERVALS:
             if (mGpsFix) {
                 menuLayout.setBackground(SDK::GUI::Color::TEAL_DARK);
                 menuLayout.getButtons().setR1(Buttons::AMBER);

@@ -25,10 +25,15 @@ namespace {
     // Native record fields shared by every record variant (HR/etc.).
     // GPS adds position; battery adds developer fields. Field order here defines
     // the on-wire order and must match the value-write order in addRecord().
+    // record.grade (field 9): sint16, scale 100, percent. A standard FIT
+    // field that SDK::Fit's profile does not list, so it is defined here.
+    constexpr Field kRecordGrade{9, fit::BaseType::SInt16};
+
     const Field kRecordCommonTail[] = {
         fit::field::Record::EnhancedAltitude,
         fit::field::Record::EnhancedSpeed,
         fit::field::Record::HeartRate,
+        kRecordGrade,
     };
 }  // namespace
 
@@ -101,7 +106,8 @@ void ActivityWriter::start(const AppInfo& info)
          fit::field::Lap::TotalDistance, fit::field::Lap::MessageIndex,
          fit::field::Lap::AvgSpeed, fit::field::Lap::MaxSpeed,
          fit::field::Lap::TotalAscent, fit::field::Lap::TotalDescent,
-         fit::field::Lap::AvgHeartRate, fit::field::Lap::MaxHeartRate});
+         fit::field::Lap::AvgHeartRate, fit::field::Lap::MaxHeartRate,
+         fit::field::Lap::Intensity, fit::field::Lap::LapTrigger});
     mFit->defineMessage(L_SESSION, fit::mesgNum(fit::MesgNum::Session),
         {fit::field::Session::Timestamp, fit::field::Session::StartTime,
          fit::field::Session::TotalElapsedTime, fit::field::Session::TotalTimerTime,
@@ -143,27 +149,31 @@ void ActivityWriter::defineRecordMessages()
     // Plain record (HR only) + 3 HR developer fields.
     mFit->defineMessage(L_RECORD, fit::mesgNum(fit::MesgNum::Record),
         {fit::field::Record::Timestamp,
-         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2]},
+         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2],
+         kRecordCommonTail[3]},
         {hr3[0], hr3[1], hr3[2]});
 
     // + GPS.
     mFit->defineMessage(L_RECORD_G, fit::mesgNum(fit::MesgNum::Record),
         {fit::field::Record::Timestamp,
          fit::field::Record::PositionLat, fit::field::Record::PositionLong,
-         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2]},
+         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2],
+         kRecordCommonTail[3]},
         {hr3[0], hr3[1], hr3[2]});
 
     // + battery (5 developer fields).
     mFit->defineMessage(L_RECORD_B, fit::mesgNum(fit::MesgNum::Record),
         {fit::field::Record::Timestamp,
-         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2]},
+         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2],
+         kRecordCommonTail[3]},
         {batt5[0], batt5[1], batt5[2], batt5[3], batt5[4]});
 
     // + GPS + battery.
     mFit->defineMessage(L_RECORD_GB, fit::mesgNum(fit::MesgNum::Record),
         {fit::field::Record::Timestamp,
          fit::field::Record::PositionLat, fit::field::Record::PositionLong,
-         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2]},
+         kRecordCommonTail[0], kRecordCommonTail[1], kRecordCommonTail[2],
+         kRecordCommonTail[3]},
         {batt5[0], batt5[1], batt5[2], batt5[3], batt5[4]});
 }
 
@@ -235,6 +245,14 @@ void ActivityWriter::addRecord(const RecordData& record)
     d.u8(record.has(RecordData::Field::HEART_RATE)
              ? static_cast<uint8_t>(record.heartRate)
              : static_cast<uint8_t>(fit::baseTypeInvalid(fit::BaseType::UInt8)));
+    // grade (100 * %), clamped to the field's range.
+    if (record.has(RecordData::Field::GRADE)) {
+        float g = record.grade * 100.0f;
+        g = g > 32000.0f ? 32000.0f : (g < -32000.0f ? -32000.0f : g);
+        d.i16(static_cast<int16_t>(g >= 0.0f ? g + 0.5f : g - 0.5f));
+    } else {
+        d.i16(static_cast<int16_t>(fit::baseTypeInvalid(fit::BaseType::SInt16)));
+    }
 
     // Developer fields, in definition order.
     if (batt) {
@@ -274,6 +292,8 @@ void ActivityWriter::addLap(const LapData& lap)
         .u16(static_cast<uint16_t>(lap.descent))
         .u8(static_cast<uint8_t>(lap.hrAvg))
         .u8(static_cast<uint8_t>(lap.hrMax))
+        .u8(static_cast<uint8_t>(lap.intensity))
+        .u8(static_cast<uint8_t>(lap.trigger))
         .write();
     mLapCounter++;
 

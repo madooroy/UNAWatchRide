@@ -17,6 +17,8 @@ public:
     void setAccessoryStatus(uint8_t state, const char* name);
     void setAutoPause(bool state);
     void setPhoneNotif(bool state);
+    void setRideSettings(const Settings& s);
+    void setRouteInfo(Ride::RouteState state, float lengthM, bool isImperial);
     void setPositionId(uint16_t id);
     uint16_t getPositionId();
 
@@ -26,6 +28,17 @@ protected:
     bool mGpsFix     = false;
     bool mAutoPause  = false;
     bool mPhoneNotif = false;
+
+    // Ride features
+    bool    mClimbAlerts = true;
+    bool    mRouteEn     = true;
+    uint8_t mHrTarget    = 0;
+    uint8_t mPreset      = 0;
+    Ride::RouteState mRouteState = Ride::RouteState::None;
+    char    mHrTip[12]    = "";
+    char    mRouteTip[24] = "";
+
+    void refreshTips();
 
     touchgfx::Callback<MenuSettingsView, MainMenuItem&, int16_t>       mUpdateItemCb;
     touchgfx::Callback<MenuSettingsView, MainMenuCenterItem&, int16_t> mUpdateCenterItemCb;

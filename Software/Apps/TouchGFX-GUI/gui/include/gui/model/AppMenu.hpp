@@ -56,13 +56,14 @@ struct Position {
 
 struct Root {
     enum Id {
-        ID_START = 0, ID_SETTINGS,
+        ID_START = 0, ID_INTERVALS, ID_SETTINGS,
         ID_COUNT, ID_DEFAULT = ID_START
     };
 
     struct Settings {
         enum Id {
-            ID_ALERTS = 0, ID_AUTO_PAUSE, ID_PHONE_NOTIF,
+            ID_ALERTS = 0, ID_AUTO_PAUSE, ID_HR_TARGET, ID_INTERVALS,
+            ID_CLIMB_ALERTS, ID_ROUTE, ID_PHONE_NOTIF,
             ID_COUNT, ID_DEFAULT = ID_ALERTS
         };
 
@@ -79,11 +80,21 @@ struct Root {
 };
 
 
-// TrackView is reached from Root::START.
+// TrackView is reached from Root::START (or Root::INTERVALS).
 // TrackAction is always an overlay of TrackView, so it lives inside it.
+//
+// The ids name every face the screen has. Not all are shown on every ride:
+// the Intervals face only during an interval session and the Route face only
+// with a route loaded. TrackView builds the list it cycles through from these.
 struct TrackView {
     enum Id {
-        ID_TRACK1 = 0, ID_TRACK2, ID_TRACK3, ID_TRACK4,
+        ID_TRACK1 = 0,  ///< Speed / distance / timer.
+        ID_TRACK2,      ///< HR / average speed / elevation.
+        ID_TRACK3,      ///< Lap.
+        ID_TRACK4,      ///< Clock / battery.
+        ID_CLIMB,       ///< Grade and climbs.
+        ID_ROUTE,       ///< Route map and distance to go.
+        ID_INTERVALS,   ///< Interval step countdown.
         ID_COUNT, ID_DEFAULT = ID_TRACK1
     };
 

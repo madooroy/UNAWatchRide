@@ -17,6 +17,41 @@ void MenuSettingsPresenter::activate()
     view.setAccessoryStatus(model->getAccessoryState(), "");
     view.setAutoPause(model->getSettings().autoPauseEn);
     view.setPhoneNotif(model->getSettings().phoneNotifEn);
+    view.setRideSettings(model->getSettings());
+    view.setRouteInfo(model->getRouteState(), model->getRouteLengthM(), model->isUnitsImperial());
+}
+
+void MenuSettingsPresenter::onRouteInfo()
+{
+    view.setRouteInfo(model->getRouteState(), model->getRouteLengthM(), model->isUnitsImperial());
+}
+
+void MenuSettingsPresenter::saveClimbAlerts(bool state)
+{
+    Settings sett = model->getSettings();
+    sett.climbAlertsEn = state;
+    model->saveSettings(sett);
+}
+
+void MenuSettingsPresenter::saveRoute(bool state)
+{
+    Settings sett = model->getSettings();
+    sett.routeEn = state;
+    model->saveSettings(sett);   // The service (re)loads or drops the route.
+}
+
+void MenuSettingsPresenter::saveHrTarget(uint8_t zone)
+{
+    Settings sett = model->getSettings();
+    sett.hrTargetZone = zone;
+    model->saveSettings(sett);
+}
+
+void MenuSettingsPresenter::saveIntervalPreset(uint8_t preset)
+{
+    Settings sett = model->getSettings();
+    sett.intervalPreset = preset;
+    model->saveSettings(sett);
 }
 
 void MenuSettingsPresenter::deactivate()
