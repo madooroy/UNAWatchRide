@@ -132,6 +132,21 @@ TEST(ClimbDetector, CurrentClimbStatsWhileClimbing)
     EXPECT_NEAR(r.det.gradePct(), 8.0f, 0.2f);
 }
 
+TEST(ClimbDetector, LiveStatsStopAtTheSummitWhileDescending)
+{
+    // Over the top and 150 m down at 5 % (7.5 m): still "climbing", because
+    // the climb only ends 10 m below the summit. The live numbers must be the
+    // climb's, not diluted by the descent.
+    Ride1Hz r;
+    r.ride(2150.0f, 4.0f, profile({{1000.0f, 0.0f}, {1000.0f, 6.0f}, {2000.0f, -5.0f}}));
+    ASSERT_TRUE(r.det.inClimb());
+    const auto c = r.det.current();
+    EXPECT_NEAR(c.distanceM, 1000.0f, 60.0f);
+    EXPECT_NEAR(c.gainM, 60.0f, 3.0f);
+    EXPECT_NEAR(c.avgGradePct, 6.0f, 0.5f);
+    EXPECT_LT(r.det.gradePct(), 0.0f);  // The live grade does show the descent.
+}
+
 TEST(ClimbDetector, ShortRampIsIgnored)
 {
     Ride1Hz r;

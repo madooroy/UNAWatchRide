@@ -12,7 +12,7 @@ A cycling app for the [UNA Watch](https://unawatch.com/pages/open-source), built
 
 ![Ride faces: speed, overview with HR target, climb, route, lap, clock](docs/images/ride-faces.png)
 
-> **Status:** works in the UNA simulator and passes 53 host unit tests, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
+> **Status:** works in the UNA simulator and passes 54 host unit tests, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
 
 ## Using it
 
@@ -126,7 +126,7 @@ cmake -G "Unix Makefiles" -S . -B build
 cmake --build build -j
 ```
 
-Copy the resulting `Ride.uapp` to `Apps/Ride/` on the watch over USB, eject, and power-cycle the watch ([UNA deploy guide](https://github.com/UNAWatch/una-sdk/blob/main/Docs/deploy.md)).
+Copy the resulting `Ride_<version>.uapp` to `Apps/Ride/` on the watch over USB, eject, and power-cycle the watch ([UNA deploy guide](https://github.com/UNAWatch/una-sdk/blob/main/Docs/deploy.md)).
 
 ### Simulator (Linux)
 
@@ -141,6 +141,8 @@ cd simulator/gcc && ../../build/bin/simulator.out                 # run from her
 
 Keys `1`–`4` are the buttons L1, L2, R1, R2.
 
+The SDK simulator's barometer is flat, so for climbs set `UNA_SIM_HILL` to a grade in percent (for example `UNA_SIM_HILL=4 ../../build/bin/simulator.out`). After 60 s on the flat, the simulated pressure falls as a road at that grade would for `UNA_SIM_HILL_SEC` seconds (default 240), then rises at the same rate. Only the simulated barometer changes, so the climb faces and alerts come from the app's own detection.
+
 ### Unit tests
 
 They also run on every push (GitHub Actions, `.github/workflows/tests.yml`).
@@ -151,12 +153,29 @@ cmake --build Tests/build -j
 ctest --test-dir Tests/build
 ```
 
+## Publishing to the community app store
+
+1. Sign up at [apps.unawatch.com](https://apps.unawatch.com), click **Add New**, name the app *Ride* and generate an **App ID**.
+2. Put that ID in `APP_ID` in `Software/Apps/Cycling-CMake/CMakeLists.txt`, replacing the local placeholder (`Tools/package.sh` warns while the placeholder is there). Bump `BUILD_VERSION` (now `1.0.0`) for each release.
+3. With ST's toolchain on `PATH`, run `UNA_SDK=... Tools/package.sh`. It builds the app and writes `Output/Ride_<version>_store.zip`, containing:
+   - the `.uapp`;
+   - `app-manifest.json`, with `minKernelVersion` stamped by the SDK's resolver;
+   - `icon.png`;
+   - the round previews from `docs/store/`.
+
+   `Tools/package.sh --manifest-only` writes just the manifest, to check it.
+4. On the app page: **Version → Upload New** → upload the zip → **Release** → **Confirm and Publish**.
+
+Icons are drawn by `Tools/make_icons.py`. Store previews are simulator screenshots, round-masked by `Tools/roundify.py`.
+
+**UNA App Development Competition (October 2026):** publish the app as above, then submit the [Google Form](https://forms.gle/MTWZYWsVgB6UvrxA7) before **30 October 2026, 4 pm UK time**. The app must be new to the store, and each person may enter at most two apps.
+
 ## Testing status
 
-- 53 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches).
-- In the simulator: all menus, settings and faces; a 3-lap route followed in order; off-course and HR-target alerts; a full interval warm-up into the first effort.
+- 54 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches).
+- In the simulator: all menus, settings and faces; a 3-lap route followed in order; off-course and HR-target alerts; a full interval warm-up into the first effort; and a simulated 4 % hill, detected as a climb with the start and summit alerts (measured 1.11 km at 3.6 % for a true 1.04 km at 4 %).
 - Cross-compiled for the watch's Cortex-M33: the GUI links and packs; the service links once the four syscall stubs above are supplied. Service: 99.6 KB code, 54 KB static RAM (500 KB available).
-- **Not yet tested on a watch.** Climb detection in particular has only been tested against synthetic profiles. Things worth checking on real rides:
+- **Not yet tested on a watch.** Climb detection in particular has only been tested against synthetic profiles and the simulated hill. Things worth checking on real rides:
   - climb start and summit timing;
   - off-course sensitivity in towns;
   - whether the app's folder is `Apps/Ride/`.

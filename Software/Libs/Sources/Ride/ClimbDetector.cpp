@@ -64,7 +64,10 @@ ClimbStats ClimbDetector::current() const
     if (mState != State::Climbing) {
         return ClimbStats{};
     }
-    return stats(mStart, mNow);
+    // Start to the highest point so far, as the finished climb is measured.
+    // Measuring to "now" would let the descent after the summit (until the
+    // climb is declared over) drag the average grade and VAM down on screen.
+    return stats(mStart, mPeak);
 }
 
 ClimbDetector::Event ClimbDetector::endClimb()

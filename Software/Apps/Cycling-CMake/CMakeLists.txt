@@ -13,9 +13,11 @@ set(APP_USER_NAME "Ride")          # Launcher name.
 set(APP_FILE_NAME "Ride")          # Ride.uapp; install it in Apps/Ride/ on the watch.
 set(APP_TYPE "Activity")
 set(DEV_ID "MADOOROY")
-# md5("UnaWatchCycling")[:16], per Docs/sdk-setup.md. Replace it with the ID
-# from apps.unawatch.com if the app is ever published there (Docs/deploy.md).
+# Placeholder: md5("UnaWatchCycling")[:16], per Docs/sdk-setup.md. Before
+# publishing, replace it with the App ID generated for "Ride" on
+# apps.unawatch.com (Docs/deploy.md); Tools/package.sh reads it from here.
 set(APP_ID "E504A310DAC4B452")
+set(BUILD_VERSION "1.0.0")         # App version shown in the store; bump per release.
 set(RESOURCES_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../Resources")
 set(OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../Output")
 set(LIBS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../Libs")

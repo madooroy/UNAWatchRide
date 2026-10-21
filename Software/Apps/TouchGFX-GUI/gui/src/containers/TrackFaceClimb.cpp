@@ -50,19 +50,24 @@ void TrackFaceClimb::setData(const Ride::Data& d, bool isImperial)
         mLowValue.set(s);
         mLowUnit.set(isImperial ? "mi" : "km");
 
-        // "Avg 6.1%  VAM 820" (VAM appears once there is enough climbing).
-        char avg[16];
-        RideUi::fixed1(avg, sizeof(avg), d.climbGradePct);
-        if (d.climbVamMph > 0.0f) {
-            std::snprintf(s, sizeof(s), "Avg %s%%  VAM %ld", avg,
-                          static_cast<long>(d.climbVamMph + 0.5f));
+        // The bottom label alternates between the climb's average grade and
+        // its VAM: both on one line are wider than the round display there.
+        // VAM only once there is enough climbing for it to mean something.
+        ++mLabelTicks;
+        const bool showVam = d.climbVamMph > 0.0f &&
+                             (mLabelTicks / kLabelSwapTicks) % 2u == 1u;
+        if (showVam) {
+            std::snprintf(s, sizeof(s), "VAM %ld m/h", static_cast<long>(d.climbVamMph + 0.5f));
         } else {
+            char avg[16];
+            RideUi::fixed1(avg, sizeof(avg), d.climbGradePct);
             std::snprintf(s, sizeof(s), "Avg %s%%", avg);
         }
         mLowLabel.set(s);
     } else {
         mGradeLabel.set("Grade");
         mGradeLabel.setColor(RideUi::textColor());
+        mLabelTicks = 0;   // The next climb starts on its average grade.
 
         mMidLabel.set("Climbed");
         RideUi::height(s, sizeof(s), d.climbedGainM, isImperial, true);

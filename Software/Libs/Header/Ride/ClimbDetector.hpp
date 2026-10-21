@@ -97,8 +97,8 @@ public:
     float gradePct() const { return mGradePct; }
     bool  gradeValid() const { return mGradeValid; }
 
-    /// The climb in progress, start to now (gain is to the current altitude,
-    /// never negative). All zero when not climbing.
+    /// The climb in progress, start to its highest point so far: the same
+    /// span lastClimb() reports when it ends. All zero when not climbing.
     ClimbStats current() const;
 
     /// The last finished climb.
