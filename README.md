@@ -8,11 +8,13 @@ A cycling app for the [UNA Watch](https://unawatch.com/pages/open-source), built
 - **Heart-rate zone coaching**: pick a zone to hold. The watch tells you when you drift above or below it, without nagging on long rides.
 - **Better FIT files**: grade on every record; intensity (warm-up/active/rest/cool-down) and lap trigger on every lap, so Strava, intervals.icu, TrainingPeaks and similar tools can tell efforts from recoveries.
 
+**Demo video (60 s):** [`docs/video/Ride_demo.mp4`](docs/video/Ride_demo.mp4): a route with a detour, a climb and the summary, in the simulator.
+
 ![Main menu](docs/images/main-menu.png)
 
 ![Ride faces: speed, overview with HR target, climb, route, lap, clock](docs/images/ride-faces.png)
 
-> **Status:** works in the UNA simulator and passes 54 host unit tests, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
+> **Status:** works in the UNA simulator and passes 55 host unit tests, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
 
 ## Using it
 
@@ -141,7 +143,9 @@ cd simulator/gcc && ../../build/bin/simulator.out                 # run from her
 
 Keys `1`–`4` are the buttons L1, L2, R1, R2.
 
-The SDK simulator's barometer is flat, so for climbs set `UNA_SIM_HILL` to a grade in percent (for example `UNA_SIM_HILL=4 ../../build/bin/simulator.out`). After 60 s on the flat, the simulated pressure falls as a road at that grade would for `UNA_SIM_HILL_SEC` seconds (default 240), then rises at the same rate. Only the simulated barometer changes, so the climb faces and alerts come from the app's own detection.
+The SDK simulator's barometer is flat, so for climbs set `UNA_SIM_HILL` to a grade in percent (for example `UNA_SIM_HILL=4 ../../build/bin/simulator.out`). After 60 s on the flat, the simulated pressure falls as a road at that grade would for `UNA_SIM_HILL_SEC` seconds (default 240), then rises at the same rate. Only the simulated barometer changes, so the climb faces and alerts come from the app's own detection. `UNA_SIM_SPEED` sets the simulated riding speed in km/h (default 30).
+
+`Tools/sim_tour.sh OUTDIR [--video]` rides a demo route in the simulator (`docs/simulator-route-detour.gpx`: one lap whose second half leaves the track, so you go off course and rejoin), climbs a simulated hill, saves the ride and screenshots every screen on the way. Needs Xvfb, xdotool and ImageMagick (and ffmpeg for `--video`). `Tools/make_video.py OUTDIR` cuts the recording into the demo video.
 
 ### Unit tests
 
@@ -172,7 +176,7 @@ Icons are drawn by `Tools/make_icons.py`. Store previews are simulator screensho
 
 ## Testing status
 
-- 54 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches).
+- 55 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches, no off-course alerts after the route is finished).
 - In the simulator: all menus, settings and faces; a 3-lap route followed in order; off-course and HR-target alerts; a full interval warm-up into the first effort; and a simulated 4 % hill, detected as a climb with the start and summit alerts (measured 1.11 km at 3.6 % for a true 1.04 km at 4 %).
 - Cross-compiled for the watch's Cortex-M33: the GUI links and packs; the service links once the four syscall stubs above are supplied. Service: 99.6 KB code, 54 KB static RAM (500 KB available).
 - **Not yet tested on a watch.** Climb detection in particular has only been tested against synthetic profiles and the simulated hill. Things worth checking on real rides:

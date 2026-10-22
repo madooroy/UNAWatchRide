@@ -169,6 +169,24 @@ TEST(RouteFollower, LoopDoesNotArriveAtTheStartButAtTheEnd)
     EXPECT_NEAR(f.status().remainingM, 0.0f, RouteFollower::kFinishM);
 }
 
+TEST(RouteFollower, NoOffCourseAlertsAfterArriving)
+{
+    // Ride a 2 km route to its end, then keep riding away from it (home).
+    auto r = route({{0, 0}, {2000, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    int arrived = 0, alerts = 0;
+    for (int e = 0; e <= 4000; e += 8) {
+        const double n = e <= 2000 ? 0.0 : (e - 2000) * 0.5;   // turn off the end of the route
+        const Event ev = tickAt(f, e <= 2000 ? e : 2000 + (e - 2000) * 0.8, n);
+        arrived += ev == Event::Arrived;
+        alerts  += ev == Event::OffCourse || ev == Event::BackOnCourse;
+    }
+    EXPECT_EQ(arrived, 1);
+    EXPECT_EQ(alerts, 0);
+    EXPECT_FALSE(f.status().offCourse);
+}
+
 TEST(RouteFollower, StartingPartWayAlong)
 {
     auto r = route({{0, 0}, {5000, 0}});

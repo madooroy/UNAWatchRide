@@ -153,6 +153,12 @@ RouteFollower::Event RouteFollower::tick(double lat, double lon, bool fix)
     mStatus.x = x;
     mStatus.y = y;
 
+    // Once the route is done, riding on (home, another loop) is not "off
+    // course": no more alerts.
+    if (mStatus.arrived) {
+        return Event::None;
+    }
+
     Event ev = Event::None;
     if (!mStatus.offCourse) {
         mOffRun = (m.dist > kOffM) ? static_cast<uint8_t>(mOffRun + (mOffRun < 255 ? 1 : 0)) : 0;

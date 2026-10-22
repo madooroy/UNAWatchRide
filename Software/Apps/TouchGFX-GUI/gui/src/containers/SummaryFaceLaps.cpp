@@ -22,6 +22,13 @@ void SummaryFaceLaps::setLaps(const std::vector<LapSummary>& laps, bool isImperi
     Unicode::snprintf(lapsTextBuffer, LAPSTEXT_SIZE, "%u %s",
         static_cast<uint32_t>(laps.size()),
         touchgfx::TypedText(T_TEXT_LAPS_UC).getText());
+    if (laps.size() == 1) {
+        // "1 LAP", not "1 LAPS": drop the plural S.
+        const uint16_t n = Unicode::strlen(lapsTextBuffer);
+        if (n > 0 && lapsTextBuffer[n - 1] == 'S') {
+            lapsTextBuffer[n - 1] = 0;
+        }
+    }
     lapsText.invalidate();
 
     time_t total = 0;

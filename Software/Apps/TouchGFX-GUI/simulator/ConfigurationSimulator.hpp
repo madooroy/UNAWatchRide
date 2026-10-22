@@ -17,9 +17,19 @@
 
 //GPS Sensor
 #define GSP_SIM_ENABLE               1  // 0 - Disable
-#define GSP_SIM_SPEED_MIN            25 // km/h
-#define GPS_SIM_SPEED_BASE           30 // km/h
-#define GPS_SIM_SPEED_MAX            35 // km/h
+// UNA_SIM_SPEED=<km/h> overrides the base speed (min and max follow, +-5).
+// Tools/sim_tour.sh rides slower so the demo route's detour lasts long
+// enough to go off course.
+#include <cstdlib>
+inline float simSpeedBase()
+{
+    const char* e = std::getenv("UNA_SIM_SPEED");
+    const float v = e ? static_cast<float>(std::atof(e)) : 0.0f;
+    return v >= 10.0f ? v : 30.0f;
+}
+#define GSP_SIM_SPEED_MIN            (simSpeedBase() - 5.0f) // km/h
+#define GPS_SIM_SPEED_BASE           (simSpeedBase())        // km/h
+#define GPS_SIM_SPEED_MAX            (simSpeedBase() + 5.0f) // km/h
 #define GPS_SIM_TIME_SEACH_SATELLITE 4 // seconds
 
 //HeatRate Sensor
