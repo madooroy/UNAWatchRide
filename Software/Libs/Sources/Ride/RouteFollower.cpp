@@ -25,6 +25,7 @@ void RouteFollower::reset()
     mStatus = Status{};
     mOffRun = 0;
     mOnRun  = 0;
+    mSinceBackOn = kRealertFixes;
     mFromJoin  = false;
     mJoinAlong = 0.0f;
     mOnRouteAlong = 0.0f;
@@ -337,9 +338,14 @@ RouteFollower::Event RouteFollower::tick(double lat, double lon, bool fix)
     }
 
     Event ev = Event::None;
+    if (mSinceBackOn < kRealertFixes) {
+        ++mSinceBackOn;
+    }
     if (!mStatus.offCourse) {
         mOffRun = (m.dist > kOffM) ? static_cast<uint8_t>(mOffRun + (mOffRun < 255 ? 1 : 0)) : 0;
-        if (mOffRun >= kOffFixes) {
+        // Just back on course: a wobble off again within kRealertFixes waits
+        // for the hold to end, and alerts then only if the rider is still off.
+        if (mOffRun >= kOffFixes && mSinceBackOn >= kRealertFixes) {
             mStatus.offCourse = true;
             mOffRun = 0;
             mOnRun  = 0;
@@ -351,6 +357,7 @@ RouteFollower::Event RouteFollower::tick(double lat, double lon, bool fix)
             mStatus.offCourse = false;
             mOnRun  = 0;
             mOffRun = 0;
+            mSinceBackOn = 0;
             ev = Event::BackOnCourse;
         }
     }

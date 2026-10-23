@@ -424,3 +424,31 @@ TEST(RouteFollower, JumpingToAnotherPassIsNotProgress)
     }
     EXPECT_NEAR(f.status().riddenM, 1600.0f, 40.0f);
 }
+
+TEST(RouteFollower, WobbleJustAfterRejoiningBuzzesOnce)
+{
+    // Off course, back on, then off again 17 s later for 15 s: no second
+    // alert. Off again for good after that: alerted once the minute is up.
+    auto r = route({{0, 0}, {5000, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    double e = 0;
+    std::vector<Event> evs;
+    auto ride = [&](int secs, double north) {
+        for (int i = 0; i < secs; ++i, e += 6) {
+            const Event ev = tickAt(f, e, north);
+            if (ev != Event::None) evs.push_back(ev);
+        }
+    };
+    ride(100, 0);
+    ride(20, 100);   // off: alerted
+    ride(20, 0);     // back on
+    ride(15, 70);    // wobble inside the hold: quiet
+    ride(10, 0);
+    ride(40, 100);   // still inside the hold (to 87 s since back on): quiet
+    ride(30, 100);   // still off when the hold ends: alerted
+    ASSERT_EQ(evs.size(), 3u);
+    EXPECT_EQ(evs[0], Event::OffCourse);
+    EXPECT_EQ(evs[1], Event::BackOnCourse);
+    EXPECT_EQ(evs[2], Event::OffCourse);
+}

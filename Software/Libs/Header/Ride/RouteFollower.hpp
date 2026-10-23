@@ -56,6 +56,11 @@ public:
     static constexpr float    kOnM         = 30.0f;
     static constexpr uint8_t  kOffFixes    = 10;
     static constexpr uint8_t  kOnFixes     = 3;
+    /// After "back on course", no new off-course alert for this many fixes
+    /// (90 s at 1 Hz), so a brief wobble buzzes once, not off-on-off-on.
+    /// Replayed rides wobbled off again 60-66 s after rejoining, so a minute
+    /// was just too short.
+    static constexpr uint8_t  kRealertFixes = 90;
     static constexpr float    kFinishM     = 40.0f;   ///< Along the route, from the finish.
     static constexpr float    kArriveM     = 60.0f;   ///< Straight line, from the finish.
     static constexpr float    kArriveMinFraction = 0.75f;  ///< Of the route ridden before arrival counts.
@@ -146,6 +151,7 @@ private:
     Status       mStatus;
     uint8_t      mOffRun = 0;
     uint8_t      mOnRun  = 0;
+    uint8_t      mSinceBackOn = kRealertFixes;  ///< Fixes since the last BackOnCourse.
 
     bool  mClosed    = false;
     bool  mFromJoin  = false;   ///< A loop joined part way round: finish at the join point.
