@@ -379,7 +379,17 @@ RouteFollower::Event RouteFollower::tick(double lat, double lon, bool fix)
         const bool nearDone  = std::hypot(x - finishX, y - finishY) <= kArriveM &&
                                alongGap(m.along, finishAlong) <= kFinishStretchM &&
                                (!mHaveHeading || m.cosHeading >= 0.0f);
-        if (alongDone || nearDone) {
+        // Joined a loop part way in, but not far enough to finish there (a
+        // trailhead a few km along an out-and-back, or up a lollipop's stem):
+        // the rider may come back to where they joined rather than ride on
+        // to the route's end. Back within kArriveM of the join point with
+        // most of the route ridden is arrival too.
+        const bool backAtJoin = mClosed && !mFromJoin &&
+                                alongGap(mJoinAlong, 0.0f) > kSettleM &&
+                                mStatus.riddenM >= kArriveMinFraction * L &&
+                                mMovedSinceJoinM >= kArriveMinFraction * L &&
+                                std::hypot(x - mJoinX, y - mJoinY) <= kArriveM;
+        if (alongDone || nearDone || backAtJoin) {
             mStatus.arrived    = true;
             mStatus.offCourse  = false;
             mStatus.remainingM = 0.0f;

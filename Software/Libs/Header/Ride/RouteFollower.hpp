@@ -36,7 +36,9 @@
  * Arrival is the finish (the route's end, or the join point on a loop
  * started part way round) reached with at least kArriveMinFraction of the
  * route ridden: within kFinishM of it along the route, or within kArriveM of
- * it as the crow flies. After arrival the follower keeps the rider's
+ * it as the crow flies. A loop joined more than kSettleM in but less than the
+ * mid-join distance (a trailhead a few km along an out-and-back) also
+ * arrives back at the join point, with that much of the route ridden. After arrival the follower keeps the rider's
  * position but raises no more events. A tick without a fix changes nothing.
  ******************************************************************************
  */

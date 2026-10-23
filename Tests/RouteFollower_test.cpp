@@ -452,3 +452,23 @@ TEST(RouteFollower, WobbleJustAfterRejoiningBuzzesOnce)
     EXPECT_EQ(evs[1], Event::BackOnCourse);
     EXPECT_EQ(evs[2], Event::OffCourse);
 }
+
+TEST(RouteFollower, OutAndBackFromATrailheadArrivesBackAtTheCar)
+{
+    // A 40 km out-and-back trail (20 km each way). Parked 3 km along it, rode
+    // to the far end and back to the car: arrives at the car, 3 km short of
+    // the route's start.
+    auto r = route({{0, 0}, {20000, 0}, {0, 3}});
+    RouteFollower f(*r);
+    f.reset();
+    int arrived = 0;
+    double at = -1;
+    for (double e = 3000; e <= 20000; e += 6) {
+        arrived += tickAt(f, e, 0) == Event::Arrived;
+    }
+    for (double e = 20000; e >= 2900; e -= 6) {
+        if (tickAt(f, e, 3) == Event::Arrived) { ++arrived; at = e; }
+    }
+    EXPECT_EQ(arrived, 1);
+    EXPECT_NEAR(at, 3000, RouteFollower::kArriveM + 20);  // Joined a few fixes in.
+}
