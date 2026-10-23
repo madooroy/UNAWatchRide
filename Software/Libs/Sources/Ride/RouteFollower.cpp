@@ -316,8 +316,8 @@ RouteFollower::Event RouteFollower::tick(double lat, double lon, bool fix)
     float done, finishX, finishY, finishAlong;
     if (mFromJoin || (mClosed && mMovedSinceJoinM < kSettleM)) {
         done = mStatus.riddenM;
-    } else if (mClosed && mStatus.riddenM >= 0.5f * L && m.along < 0.25f * L) {
-        done = L;  // Over the finish of a loop and on round past its start.
+    } else if (mClosed && mStatus.riddenM >= kArriveMinFraction * L && m.along < kSettleM) {
+        done = L;  // Just over the finish of a loop, on round past its start.
     } else {
         done = m.along;
     }
