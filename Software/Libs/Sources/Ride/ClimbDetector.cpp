@@ -64,17 +64,20 @@ ClimbStats ClimbDetector::current() const
     if (mState != State::Climbing) {
         return ClimbStats{};
     }
-    // Start to the highest point so far, as the finished climb is measured.
-    // Measuring to "now" would let the descent after the summit (until the
-    // climb is declared over) drag the average grade and VAM down on screen.
-    return stats(mStart, mPeak);
+    // Start to the summit so far, as the finished climb is measured.
+    // Measuring to "now" would let the descent or false flat after the summit
+    // (until the climb is declared over) drag the average grade and VAM down.
+    return stats(mStart, mTop);
 }
 
 ClimbDetector::Event ClimbDetector::endClimb()
 {
+    // Every confirmed climb is reported: confirmation already needs the
+    // climb's length and gain, so a rider who felt the start buzz always
+    // gets the summit.
     Event ev = Event::None;
-    if (mState == State::Climbing && (mPeak.distanceM - mStart.distanceM) >= kMinDistanceM) {
-        mLast = stats(mStart, mPeak);
+    if (mState == State::Climbing) {
+        mLast = stats(mStart, mTop);
         ++mCount;
         mTotalGain += mLast.gainM;
         ev = Event::Finished;
@@ -125,26 +128,33 @@ ClimbDetector::Event ClimbDetector::tick(float distanceM, float altitudeM, bool 
             }
         }
         mPeak     = mNow;
-        mRise     = mNow;
+        mTop      = mNow;
+        mSteep    = mNow;
         mState    = State::Candidate;
     }
 
-    // Track the summit. The rise marker only moves on a meaningful gain, so
-    // barometer jitter on a plateau does not keep the climb alive forever.
+    // The highest point so far, for the drop that ends the climb.
     if (mNow.altitudeM > mPeak.altitudeM) {
         mPeak = mNow;
     }
-    if (mNow.altitudeM >= mRise.altitudeM + kPeakStepM) {
-        mRise = mNow;
+    // The summit: the highest point up to where the road was last still
+    // climbing (window grade >= kKeepGradePct). A false flat after the steep
+    // part may gain a few more metres, but it is not part of the climb: it
+    // would stretch the climb and drag its average grade towards 1-2 %.
+    if (mGradeValid && mGradePct >= kKeepGradePct) {
+        mSteep = mNow;
+        mTop   = mPeak;
     }
 
-    if (mState == State::Candidate && (mPeak.altitudeM - mStart.altitudeM) >= kConfirmGainM) {
+    if (mState == State::Candidate &&
+        (mTop.altitudeM - mStart.altitudeM) >= kConfirmGainM &&
+        (mTop.distanceM - mStart.distanceM) >= kMinDistanceM) {
         mState = State::Climbing;
         return Event::Started;
     }
 
     const bool dropped = (mPeak.altitudeM - mNow.altitudeM) >= kEndDropM;
-    const bool flat    = (mNow.distanceM - mRise.distanceM) >= kEndFlatM;
+    const bool flat    = (mNow.distanceM - mSteep.distanceM) >= kEndFlatM;
     if (dropped || flat) {
         return endClimb();
     }

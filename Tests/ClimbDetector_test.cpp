@@ -104,8 +104,8 @@ TEST(ClimbDetector, SteadyClimbIsMeasuredStartToSummit)
     ASSERT_EQ(r.count(Event::Started), 1);
     ASSERT_EQ(r.count(Event::Finished), 1);
 
-    // Confirmed once 15 m are gained: 250 m into the climb.
-    EXPECT_NEAR(r.events[0].second, 1250.0f, 20.0f);
+    // Confirmed once the climb is 300 m long (15 m are gained at 250 m).
+    EXPECT_NEAR(r.events[0].second, 1300.0f, 20.0f);
     // Ends 10 m below the summit: 200 m into the 5 % descent.
     EXPECT_NEAR(r.events[1].second, 2200.0f, 20.0f);
 
@@ -156,14 +156,56 @@ TEST(ClimbDetector, ShortRampIsIgnored)
     EXPECT_EQ(r.count(Event::Finished), 0);
 }
 
-TEST(ClimbDetector, ConfirmedButShortClimbIsNotReported)
+TEST(ClimbDetector, ShortSteepRampNeverBuzzes)
 {
     Ride1Hz r;
-    // 250 m at 8 % = 20 m: confirmed, but shorter than kMinDistanceM.
+    // 250 m at 8 % = 20 m: enough gain, but shorter than kMinDistanceM. It
+    // used to be confirmed (a start buzz) and then never reported.
     r.ride(2000.0f, 5.0f, profile({{500.0f, 0.0f}, {250.0f, 8.0f}, {300.0f, -8.0f}, {2000.0f, 0.0f}}));
-    EXPECT_EQ(r.count(Event::Started), 1);
+    EXPECT_EQ(r.count(Event::Started), 0);
     EXPECT_EQ(r.count(Event::Finished), 0);
     EXPECT_EQ(r.det.climbCount(), 0);
+}
+
+TEST(ClimbDetector, EveryStartedClimbIsReported)
+{
+    // Rolling terrain: ramps of every length and grade, separated by dips and
+    // false flats, with barometer noise. Starts and summits must pair up.
+    Ride1Hz r;
+    std::vector<std::pair<float, float>> segs;
+    for (int i = 0; i < 60; ++i) {
+        const float len   = 150.0f + 70.0f * static_cast<float>((i * 37) % 11);
+        const float grade = -6.0f + static_cast<float>((i * 53) % 17);
+        segs.emplace_back(len, grade);
+    }
+    r.ride(30000.0f, 6.0f, profile(segs), noise(0.6f));
+    int open = 0;
+    for (const auto& e : r.events) {
+        if (e.first == Event::Started) {
+            EXPECT_EQ(open, 0);
+            ++open;
+        } else if (e.first == Event::Finished) {
+            EXPECT_EQ(open, 1);
+            --open;
+        }
+    }
+    EXPECT_GT(r.count(Event::Finished), 3);
+    EXPECT_EQ(r.count(Event::Started) - r.count(Event::Finished), r.det.inClimb() ? 1 : 0);
+}
+
+TEST(ClimbDetector, FalseFlatAfterTheClimbIsNotPartOfIt)
+{
+    // From a replayed ride: a real ramp, then a long 1 % drag that keeps
+    // setting new high points. The climb is the ramp (600 m at 6 %), not
+    // 2.1 km averaging 2.4 %.
+    Ride1Hz r;
+    r.ride(4500.0f, 5.0f, profile({{500.0f, 0.0f}, {600.0f, 6.0f}, {1500.0f, 1.0f}, {2000.0f, -3.0f}}));
+    ASSERT_EQ(r.count(Event::Finished), 1);
+    const auto& c = r.det.lastClimb();
+    EXPECT_NEAR(c.distanceM, 650.0f, 80.0f);
+    EXPECT_GT(c.avgGradePct, 5.0f);
+    // It ends 400 m into the drag, not at its far end.
+    EXPECT_LT(r.events.back().second, 1100.0f + 600.0f);
 }
 
 TEST(ClimbDetector, ShortFalseFlatDoesNotSplitAClimb)
@@ -181,8 +223,11 @@ TEST(ClimbDetector, PlateauEndsTheClimbAtTheSummit)
     Ride1Hz r;
     r.ride(2000.0f, 5.0f, profile({{100.0f, 0.0f}, {600.0f, 5.0f}, {3000.0f, 0.0f}}));
     ASSERT_EQ(r.count(Event::Finished), 1);
-    // Fires kEndFlatM after the summit; the climb itself stops at the summit.
-    EXPECT_NEAR(r.events.back().second, 700.0f + ClimbDetector::kEndFlatM, 20.0f);
+    // Fires kEndFlatM after the road last climbed at kKeepGradePct, which the
+    // 100 m grade window puts a little past the summit; the climb itself
+    // stops at the summit.
+    EXPECT_GT(r.events.back().second, 700.0f + ClimbDetector::kEndFlatM - 10.0f);
+    EXPECT_LT(r.events.back().second, 700.0f + ClimbDetector::kEndFlatM + 80.0f);
     EXPECT_NEAR(r.det.lastClimb().distanceM, 600.0f, 60.0f);
 }
 

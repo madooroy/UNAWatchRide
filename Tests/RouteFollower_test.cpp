@@ -305,3 +305,122 @@ TEST(RouteFollower, ShortOutAndBackSpur)
     for (int e = 500; e <= 800; e += 6) tickAt(f, e, 0);
     EXPECT_NEAR(f.status().alongM, 920.0f, 12.0f);
 }
+
+// ---- Behaviours found by replaying real rides (Tools/replay) ----------------
+
+TEST(RouteFollower, RidingFromTheCarParkToTheRouteIsQuiet)
+{
+    // Ride starts 70 m off the route and takes 40 s to reach it.
+    auto r = route({{0, 0}, {3000, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    for (int i = 0; i <= 40; ++i) {
+        EXPECT_EQ(tickAt(f, 200 + i * 2.0, 70.0 - i * 1.75), Event::None) << i;
+    }
+    for (int e = 290; e < 1000; e += 8) {
+        EXPECT_EQ(tickAt(f, e, 2), Event::None);
+    }
+    EXPECT_TRUE(f.status().joined);
+    EXPECT_FALSE(f.status().offCourse);
+}
+
+TEST(RouteFollower, FinishingBesideTheEndArrives)
+{
+    // The ride ends in a car park 45 m beside the route's end, never within
+    // kFinishM of it along the route.
+    auto r = route({{0, 0}, {5000, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    for (int e = 0; e <= 4900; e += 8) {
+        tickAt(f, e, 0);
+    }
+    int arrived = 0;
+    for (int n = 0; n <= 45; n += 5) {
+        arrived += tickAt(f, 4950, n) == Event::Arrived ? 1 : 0;
+    }
+    EXPECT_EQ(arrived, 1);
+    EXPECT_TRUE(f.status().arrived);
+}
+
+TEST(RouteFollower, NothingAfterArrival)
+{
+    auto r = route({{0, 0}, {2000, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    int arrived = 0;
+    for (int e = 0; e <= 2000; e += 8) {
+        arrived += tickAt(f, e, 0) == Event::Arrived ? 1 : 0;
+    }
+    ASSERT_EQ(arrived, 1);
+    // Riding away from the finish to the car: no off-course alert.
+    for (int n = 0; n <= 400; n += 8) {
+        EXPECT_EQ(tickAt(f, 2000, n), Event::None);
+    }
+    EXPECT_FLOAT_EQ(f.status().remainingM, 0.0f);
+}
+
+TEST(RouteFollower, LoopJoinedPartWayFinishesWhereItJoined)
+{
+    // A 6 km rectangular loop, joined 2.3 km round (parked on the circuit).
+    auto r = route({{0, 0}, {2000, 0}, {2000, 1000}, {0, 1000}, {0, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    ASSERT_TRUE(f.closed());
+    int arrived = 0;
+    double e = 2000, n = 300;
+    auto go = [&](double e1, double n1) {
+        const int steps = static_cast<int>(std::hypot(e1 - e, n1 - n) / 7.0);
+        for (int i = 1; i <= steps; ++i) {
+            const double t = static_cast<double>(i) / steps;
+            arrived += tickAt(f, e + t * (e1 - e), n + t * (n1 - n)) == Event::Arrived ? 1 : 0;
+        }
+        e = e1;
+        n = n1;
+    };
+    go(2000, 1000);
+    go(0, 1000);
+    go(0, 0);  // The route's own start/finish: not this ride's finish.
+    EXPECT_EQ(arrived, 0);
+    EXPECT_NEAR(f.status().remainingM, 2300.0f, 60.0f);
+    go(2000, 0);
+    go(2000, 300);
+    EXPECT_EQ(arrived, 1);
+}
+
+TEST(RouteFollower, TurningBackEarlyOnAnOutAndBackFollowsTheReturn)
+{
+    // Out 3 km east and back on the same road. The rider turns back after
+    // 1 km: they are on the route's return leg, outside the search window,
+    // going its way. Not off course, and the return leg's distance to go.
+    auto r = route({{0, 0}, {3000, 0}, {0, 0.5}});
+    RouteFollower f(*r);
+    f.reset();
+    for (int e = 0; e <= 1000; e += 7) {
+        EXPECT_EQ(tickAt(f, e, 0), Event::None);
+    }
+    int off = 0;
+    for (int e = 1000; e >= 500; e -= 7) {
+        off += tickAt(f, e, 0.4) == Event::OffCourse ? 1 : 0;
+    }
+    EXPECT_EQ(off, 0);
+    EXPECT_NEAR(f.status().alongM, 5500.0f, 30.0f);
+    EXPECT_NEAR(f.status().remainingM, 500.0f, 30.0f);
+}
+
+TEST(RouteFollower, JumpingToAnotherPassIsNotProgress)
+{
+    // A loop that uses one road twice, in opposite directions. Re-identifying
+    // which pass the rider is on must not add the gap between the passes to
+    // the distance ridden.
+    auto r = route({{0, 0}, {1000, 0}, {1000, 1000}, {2000, 1000}, {2000, 2000},
+                    {1000.5, 2000}, {1000.5, 0.5}, {0.5, 0.5}, {0, 0}});
+    RouteFollower f(*r);
+    f.reset();
+    for (int e = 0; e <= 1000; e += 7) {
+        tickAt(f, e, 0);
+    }
+    for (int n = 0; n <= 600; n += 7) {
+        tickAt(f, 1000, n);
+    }
+    EXPECT_NEAR(f.status().riddenM, 1600.0f, 40.0f);
+}

@@ -19,3 +19,6 @@ Software/Apps/TouchGFX-GUI/generated/fonts/FontCache*.txt
 .vs/
 *.swp
 .DS_Store
+
+Tools/replay/build/
+*.fit

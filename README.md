@@ -14,7 +14,7 @@ A cycling app for the [UNA Watch](https://unawatch.com/pages/open-source), built
 
 ![Ride faces: speed, overview with HR target, climb, route, lap, clock](docs/images/ride-faces.png)
 
-> **Status:** works in the UNA simulator and passes 55 host unit tests, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
+> **Status:** works in the UNA simulator and passes 63 host unit tests and replays of five real rides, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
 
 ## Using it
 
@@ -176,12 +176,14 @@ Icons are drawn by `Tools/make_icons.py`. Store previews are simulator screensho
 
 ## Testing status
 
-- 55 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches, no off-course alerts after the route is finished).
+- 63 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches, no off-course alerts after the route is finished).
 - In the simulator: all menus, settings and faces; a 3-lap route followed in order; off-course and HR-target alerts; a full interval warm-up into the first effort; and a simulated 4 % hill, detected as a climb with the start and summit alerts (measured 1.11 km at 3.6 % for a true 1.04 km at 4 %).
 - Cross-compiled for the watch's Cortex-M33: the GUI links and packs; the service links once the four syscall stubs above are supplied. Service: 99.6 KB code, 54 KB static RAM (500 KB available).
-- **Not yet tested on a watch.** Climb detection in particular has only been tested against synthetic profiles and the simulated hill. Things worth checking on real rides:
-  - climb start and summit timing;
-  - off-course sensitivity in towns;
+- Replayed on five real rides (40 to 103 km, recorded on a Hammerhead Karoo 2) with their planned GPX routes, using `Tools/replay` (see its README). Every ride arrived at the finish within metres of where the rider stopped, including loops started part way round, a loop ridden partly backwards, and a 5 km detour. Every off-course alert matched a real deviation: a café stop, a skipped spur, a parallel street, a detour. Every climb that buzzed a start also buzzed a summit.
+- The SDK's ascent counter (2 m steps) gives 6 to 16 % less total ascent than the Karoo on the same altitude data. This is left as it is until it can be compared on the watch's own barometer.
+- **Not yet tested on a watch.** Things worth checking on real rides:
+  - climb start and summit timing on the watch's barometer;
+  - off-course sensitivity in towns with the watch's GPS;
   - whether the app's folder is `Apps/Ride/`.
 
 ## Credits and licence
