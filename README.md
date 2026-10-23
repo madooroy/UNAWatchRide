@@ -120,7 +120,7 @@ python3 -m pip install -r "$UNA_SDK/Utilities/Scripts/app_packer/requirements.tx
 
 ### Watch app (`Ride.uapp`)
 
-Use **ST's ARM toolchain** (STM32CubeCLT or STM32CubeIDE) on your `PATH`, as the SDK requires. The distro `gcc-arm-none-eabi` compiles everything but fails to link the service on missing newlib syscall stubs (`_write`, `_read`, `_close`, `_lseek`). The unmodified UNA example fails the same way, so this is not specific to this app.
+Use **ST's ARM toolchain** (STM32CubeCLT or STM32CubeIDE) on your `PATH`, as the SDK requires. The distro `gcc-arm-none-eabi` works too: its newlib wants syscall stubs (`_write`, `_read`, `_close`, `_lseek`) that ST's toolchain does not, so the service links weak do-nothing ones from `Software/Libs/Sources/SyscallStubs.c`.
 
 ```bash
 cd Software/Apps/Cycling-CMake
@@ -178,7 +178,7 @@ Icons are drawn by `Tools/make_icons.py`. Store previews are simulator screensho
 
 - 65 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches, no off-course alerts after the route is finished).
 - In the simulator: all menus, settings and faces; a 3-lap route followed in order; off-course and HR-target alerts; a full interval warm-up into the first effort; and a simulated 4 % hill, detected as a climb with the start and summit alerts (measured 1.11 km at 3.6 % for a true 1.04 km at 4 %).
-- Cross-compiled for the watch's Cortex-M33: the GUI links and packs; the service links once the four syscall stubs above are supplied. Service: 99.6 KB code, 54 KB static RAM (500 KB available).
+- Cross-compiled for the watch's Cortex-M33: the GUI links and packs; the service links with the weak syscall stubs. Service: 99.6 KB code, 54 KB static RAM (500 KB available).
 - Replayed on 20 real rides (33 to 103 km, recorded on a Hammerhead Karoo 2) with their planned GPX routes, using `Tools/replay` (see its README). The rides include loops started part way round, out-and-backs, a loop ridden partly backwards, two lollipops whose stems are ridden both ways, an out-and-back rail trail started from a trailhead part way along, detours of up to 25 km past the end of the route, and a ride that took the planned roads in a different order. Every ride arrived at the finish within metres of where the rider stopped. Every off-course alert matched a real deviation: a café stop, a skipped spur, a parallel street, a detour. Every climb that buzzed a start also buzzed a summit.
 - Total ascent comes out 6 to 24 % below the Karoo's on the same altitude data, because the SDK's ascent counter only counts a rise once it reaches 2 m (`mAltitudeCounter.init(2.0f)` in `Service.cpp`). On the Karoo's data a 0.5 m step lands within 0 to 7 %. The Karoo's altitude is already smoothed, though, and the watch's raw barometer may be noisier, so the step stays at 2 m until a ride recorded on the watch shows how much smaller it can safely go.
 - **Not yet tested on a watch.** Things worth checking on real rides:

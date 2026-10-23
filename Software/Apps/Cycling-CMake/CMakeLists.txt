@@ -48,6 +48,7 @@ una_app_setup_version(BUILD_VERSION ${CMAKE_CURRENT_SOURCE_DIR})
 # Build service
 set(SERVICE_SOURCES
     ${LIBS_SOURCES}
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Libs/Sources/SyscallStubs.c"
     ${UNA_SDK_SOURCES_COMMON}
     ${UNA_SDK_SOURCES_SERVICE}
 )
