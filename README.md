@@ -14,7 +14,7 @@ A cycling app for the [UNA Watch](https://unawatch.com/pages/open-source), built
 
 ![Ride faces: speed, overview with HR target, climb, route, lap, clock](docs/images/ride-faces.png)
 
-> **Status:** works in the UNA simulator and passes 65 host unit tests and replays of 18 real rides, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
+> **Status:** works in the UNA simulator and passes 65 host unit tests and replays of 19 real rides, but has **not yet been tested on a watch**. See [Testing status](#testing-status).
 
 ## Using it
 
@@ -179,7 +179,7 @@ Icons are drawn by `Tools/make_icons.py`. Store previews are simulator screensho
 - 65 host unit tests cover climb detection, HR zone coaching, interval sessions, GPX parsing, route storage and simplification, and route following (laps, out-and-backs, spurs, detours, fast riders, GPS glitches, no off-course alerts after the route is finished).
 - In the simulator: all menus, settings and faces; a 3-lap route followed in order; off-course and HR-target alerts; a full interval warm-up into the first effort; and a simulated 4 % hill, detected as a climb with the start and summit alerts (measured 1.11 km at 3.6 % for a true 1.04 km at 4 %).
 - Cross-compiled for the watch's Cortex-M33: the GUI links and packs; the service links once the four syscall stubs above are supplied. Service: 99.6 KB code, 54 KB static RAM (500 KB available).
-- Replayed on 18 real rides (33 to 103 km, recorded on a Hammerhead Karoo 2) with their planned GPX routes, using `Tools/replay` (see its README). The rides include loops started part way round, out-and-backs, a loop ridden partly backwards, a lollipop whose stem is ridden both ways, an out-and-back rail trail started from a trailhead part way along, detours of up to 25 km past the end of the route, and a ride that took the planned roads in a different order. Every ride arrived at the finish within metres of where the rider stopped. Every off-course alert matched a real deviation: a café stop, a skipped spur, a parallel street, a detour. Every climb that buzzed a start also buzzed a summit.
+- Replayed on 19 real rides (33 to 103 km, recorded on a Hammerhead Karoo 2) with their planned GPX routes, using `Tools/replay` (see its README). The rides include loops started part way round, out-and-backs, a loop ridden partly backwards, two lollipops whose stems are ridden both ways, an out-and-back rail trail started from a trailhead part way along, detours of up to 25 km past the end of the route, and a ride that took the planned roads in a different order. Every ride arrived at the finish within metres of where the rider stopped. Every off-course alert matched a real deviation: a café stop, a skipped spur, a parallel street, a detour. Every climb that buzzed a start also buzzed a summit.
 - Total ascent comes out 6 to 24 % below the Karoo's on the same altitude data, because the SDK's ascent counter only counts a rise once it reaches 2 m (`mAltitudeCounter.init(2.0f)` in `Service.cpp`). On the Karoo's data a 0.5 m step lands within 0 to 7 %. The Karoo's altitude is already smoothed, though, and the watch's raw barometer may be noisier, so the step stays at 2 m until a ride recorded on the watch shows how much smaller it can safely go.
 - **Not yet tested on a watch.** Things worth checking on real rides:
   - climb start and summit timing on the watch's barometer;
