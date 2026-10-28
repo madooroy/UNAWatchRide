@@ -164,8 +164,9 @@ ctest --test-dir Tests/build
 3. With ST's toolchain on `PATH`, run `UNA_SDK=... Tools/package.sh`. It builds the app and writes `Output/Ride_<version>_store.zip`, containing:
    - the `.uapp`;
    - `app-manifest.json`, with `minKernelVersion` stamped by the SDK's resolver;
-   - `icon.png`;
-   - the round previews from `docs/store/`.
+   - `icon.png`.
+
+   The store rejects anything else in the zip or the manifest, so the description and the round previews from `docs/store/` go on the app's page in the portal.
 
    `Tools/package.sh --manifest-only` writes just the manifest, to check it.
 4. On the app page: **Version → Upload New** → upload the zip → **Release** → **Confirm and Publish**.

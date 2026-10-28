@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Build the watch app and pack the community-app-store upload:
-#   Output/Ride_<version>_store.zip = Ride_<version>.uapp + app-manifest.json
-#                                     + icon.png + previews/
+#   Output/Ride_<version>_store.zip = Ride_<version>.uapp + app-manifest.json + icon.png
 #
 # Usage: UNA_SDK=/path/to/una-sdk Tools/package.sh
 #        Tools/package.sh --manifest-only   # write Output/app-manifest.json only
@@ -35,11 +34,9 @@ write_manifest() {
   "name": "Ride",
   "icon": "icon.png",
   "binary": "$NAME",
-  "previews": "previews/",
   "appVersion": "$VERSION",
   "minKernelVersion": "1.4.0",
   "requiredHardware": ["GPS"],
-  "description": "A cycling computer for your wrist. Everything a ride needs (speed, distance, heart rate with zones, elevation, auto-pause, auto-laps, external HR straps) plus: climb detection with live grade, climb gain, average grade and VAM, and a buzz at the start and summit of every climb; route following from a GPX file, with a route map, your position, distance to go and off-course alerts; five interval presets with countdown beeps, each step saved as its own lap; and heart-rate zone coaching that tells you when you drift out of your target zone. FIT files carry grade on every point and lap intensity, ready for Strava and training apps.",
   "stravaExport": true,
   "id": "$APP_ID",
   "supportsLaps": true,
@@ -54,6 +51,19 @@ write_manifest() {
 JSON
     # Raise minKernelVersion to the floor the SDK's ABI requires.
     python3 "$UNA_SDK/Utilities/Scripts/app_packer/min_kernel_version.py" --stamp "$1"
+    # The store rejects any manifest key it does not know ("must NOT have
+    # additional properties"). Keep to the keys of the SDK's own sample
+    # manifests; the description and screenshots go on the app's page in the portal.
+    python3 - "$1" <<'PY'
+import json, sys
+allowed = {"manifest_version", "type", "name", "icon", "binary", "appVersion", "minKernelVersion",
+           "requiredHardware", "stravaExport", "id", "supportsLaps", "supportsDistance",
+           "supportsTrack", "supportsHeartbeat", "supportsElevation", "supportsStep",
+           "supportsSpeed", "customMeasures", "configFields", "configFile"}
+extra = sorted(set(json.load(open(sys.argv[1]))) - allowed)
+if extra:
+    sys.exit(f"app-manifest.json has keys the store rejects: {extra}")
+PY
 }
 
 mkdir -p "$ROOT/Output"
@@ -75,8 +85,6 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 cp "$UAPP" "$STAGE/"
 cp "$ROOT/Resources/icon.png" "$STAGE/icon.png"
-mkdir -p "$STAGE/previews"
-cp "$ROOT"/docs/store/store_*.png "$STAGE/previews/"
 write_manifest "$STAGE/app-manifest.json"
 
 ZIP="$ROOT/Output/Ride_${VERSION}_store.zip"
