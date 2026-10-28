@@ -37,7 +37,7 @@ write_manifest() {
   "appVersion": "$VERSION",
   "minKernelVersion": "1.4.0",
   "requiredHardware": ["GPS"],
-  "description": "A cycling computer for your wrist, built on UNA's Cycling app. Speed, distance, heart rate with zones, elevation, auto-pause, auto-laps and external HR straps, plus: climb detection with live grade, gain, average grade and VAM, and a buzz at the start and summit of every climb; route following from a GPX file, with a map, distance to go and off-course alerts; five interval presets with countdown beeps; heart-rate zone coaching; and FIT files with grade and lap intensity for Strava and training apps.",
+  "description": "A cycling computer for your wrist, built on UNA's Cycling app. Speed, distance, heart rate with zones, elevation, auto-pause, auto-laps and external HR straps, plus: climb detection with live grade, gain, average grade and VAM, and a buzz at the start and summit of every climb; route following from a GPX file, with a map, distance to go and off-course alerts; five interval presets with countdown beeps; heart-rate zone coaching; and FIT files with grade and lap intensity for Strava and training apps. To follow a route, copy your GPX file to the watch as Apps/Ride/route.gpx.",
   "stravaExport": true,
   "id": "$APP_ID",
   "supportsLaps": true,
